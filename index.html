@@ -469,8 +469,39 @@ body {
 }
 .cal-ev:hover .ev-del { opacity: 1; }
 .ev-del:hover { color: white; }
+/* Resize handles */
+.ev-rz {
+  position: absolute;
+  left: 0; right: 0;
+  height: 6px;
+  cursor: ns-resize;
+  z-index: 6;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.ev-rz-top { top: 0; border-radius: 4px 4px 0 0; }
+.ev-rz-bot { bottom: 0; border-radius: 0 0 4px 4px; }
+.ev-rz::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%,-50%);
+  width: 20px;
+  height: 2px;
+  background: rgba(255,255,255,0.7);
+  border-radius: 1px;
+}
+.cal-ev:hover .ev-rz { opacity: 1; }
+/* Event drag cursor */
+.cal-ev { cursor: grab; }
+.cal-ev:active { cursor: grabbing; }
+.cal-ev.is-dragging { opacity: 0.4; }
 /* Drop zone */
 .day-col.drag-over { background: rgba(26,115,232,0.12) !important; }
+/* Resize global cursor override */
+body.resizing * { cursor: ns-resize !important; user-select: none !important; }
+body.ev-moving * { cursor: grabbing !important; user-select: none !important; }
 
 /* ===== MONTH VIEW ===== */
 #month-view {
@@ -746,7 +777,7 @@ body {
     <h2>新增行程</h2>
     <div class="form-group">
       <label>標題</label>
-      <input type="text" id="ev-title" placeholder="行程標題" onkeydown="if(event.key==='Enter')saveEvent()">
+      <input type="text" id="ev-title" placeholder="行程標題" onkeydown="if(event.key==='Enter')saveEvent()" oninput="onTitleInput()">
     </div>
     <div class="modal-row">
       <div class="form-group">
@@ -794,6 +825,8 @@ let miniAnchor  = new Date();   // mini-cal month
 let calEvents   = [];
 let taskList    = [];
 let dragItem    = null;         // task being dragged
+let dragEvent   = null;         // { id, offsetMins, duration }  calendar event being moved
+let resizeState = null;         // resize in progress
 const ghost     = document.getElementById('drag-ghost');
 
 // ═══════════════════════════════════════════════
@@ -957,7 +990,7 @@ async function quickImport() {
     const [,mo,dy,sh,sm,eh,em,title] = m;
     const start = new Date(year, +mo-1, +dy, +sh, +sm);
     const end   = eh ? new Date(year, +mo-1, +dy, +eh, +em)
-                     : new Date(start.getTime() + 3600000);
+                     : new Date(start.getTime() + defaultDuration(title));
     parsed.push({ title, start, end });
   }
 
@@ -1121,11 +1154,18 @@ function renderWeek() {
       const end   = new Date(ev.end?.dateTime   || ev.end?.date || start);
       const tl    = ev.start?.dateTime ? `${fmtTime(start)}–${fmtTime(end)}` : '全天';
       const color = evColor(ev);
-      g += `<div class="cal-ev" style="top:${top}px;height:${height}px;left:${left}%;width:${width}%;background:${color}"
-        title="${esc(ev.summary||'')}" onclick="event.stopPropagation()">
+      g += `<div class="cal-ev" id="ev-${ev.id}"
+        style="top:${top}px;height:${Math.max(height,20)}px;left:${left}%;width:${width}%;background:${color}"
+        title="${esc(ev.summary||'')}"
+        draggable="true"
+        ondragstart="evDragStart(event,'${ev.id}')"
+        ondragend="evDragEnd(event)"
+        onclick="event.stopPropagation()">
+        <div class="ev-rz ev-rz-top" onmousedown="evResizeStart(event,'${ev.id}','top')"></div>
         <button class="ev-del" onclick="deleteEvent('${ev.id}');event.stopPropagation()">×</button>
         <span class="ev-time">${tl}</span>
         <span class="ev-title">${esc(ev.summary||'(無標題)')}</span>
+        <div class="ev-rz ev-rz-bot" onmousedown="evResizeStart(event,'${ev.id}','bot')"></div>
       </div>`;
     }
     // Time line
@@ -1301,9 +1341,9 @@ function moveGhost(ev) {
 }
 
 function onDragOver(ev) {
-  if (!dragItem) return;
+  if (!dragItem && !dragEvent) return;
   ev.preventDefault();
-  ev.dataTransfer.dropEffect = 'copy';
+  ev.dataTransfer.dropEffect = dragEvent ? 'move' : 'copy';
   ev.currentTarget.classList.add('drag-over');
 }
 
@@ -1314,21 +1354,156 @@ function onDragLeave(ev) {
 function onDrop(ev, dateStr) {
   ev.preventDefault();
   ev.currentTarget.classList.remove('drag-over');
-  if (!dragItem) return;
 
   const body = document.getElementById('week-body');
   const rect = ev.currentTarget.getBoundingClientRect();
   const relY = ev.clientY - rect.top + body.scrollTop;
-  const hour = Math.floor(relY / HH);
-  const minR = Math.round(((relY % HH) / HH) * 60 / 15) * 15;
 
-  const [dy, dm, dd] = dateStr.split('-').map(Number);
-  const start = new Date(dy, dm-1, dd, clamp(hour,0,23), clamp(minR,0,59));
-  const end   = new Date(start.getTime() + 3600000);
+  if (dragEvent) {
+    // ── Move calendar event ──
+    const totalMins = Math.round((relY / HH) * 60 / 15) * 15;
+    const startMins = clamp(totalMins - dragEvent.offsetMins, 0, 23*60);
+    const [dy, dm, dd] = dateStr.split('-').map(Number);
+    const newStart = new Date(dy, dm-1, dd,
+      Math.floor(startMins/60), startMins%60, 0, 0);
+    const newEnd   = new Date(newStart.getTime() + dragEvent.duration);
+    moveEvent(dragEvent.id, newStart, newEnd);
+    dragEvent = null;
+    document.body.classList.remove('ev-moving');
+    return;
+  }
 
-  const tid = dragItem.id;
-  const ttl = dragItem.title;
-  createEvent(ttl, start, end).then(() => completeTask(tid));
+  if (dragItem) {
+    // ── Drop task → new event ──
+    const hour = Math.floor(relY / HH);
+    const minR = Math.round(((relY % HH) / HH) * 60 / 15) * 15;
+    const [dy, dm, dd] = dateStr.split('-').map(Number);
+    const start = new Date(dy, dm-1, dd, clamp(hour,0,23), clamp(minR,0,59));
+    const dur   = isLivestream(dragItem.title) ? 3*3600000 : 3600000;
+    const end   = new Date(start.getTime() + dur);
+    const tid = dragItem.id, ttl = dragItem.title;
+    createEvent(ttl, start, end).then(() => completeTask(tid));
+  }
+}
+
+// ── Calendar event drag (move) ──
+function evDragStart(ev, id) {
+  ev.stopPropagation();
+  const calEv = calEvents.find(e => e.id === id);
+  if (!calEv?.start?.dateTime) { ev.preventDefault(); return; }
+
+  const el   = ev.currentTarget;
+  const rect = el.getBoundingClientRect();
+  const body = document.getElementById('week-body');
+  const relY = ev.clientY - rect.top;
+  const offsetMins = Math.round((relY / HH) * 60);
+
+  const origStart = new Date(calEv.start.dateTime);
+  const origEnd   = new Date(calEv.end?.dateTime || calEv.start.dateTime);
+  dragEvent = { id, offsetMins, duration: origEnd - origStart };
+  dragItem  = null;
+
+  // Transparent drag image so we can see the faded original
+  const img = new Image();
+  img.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+  ev.dataTransfer.setDragImage(img, 0, 0);
+  ev.dataTransfer.effectAllowed = 'move';
+
+  el.classList.add('is-dragging');
+  document.body.classList.add('ev-moving');
+}
+
+function evDragEnd(ev) {
+  ev.currentTarget.classList.remove('is-dragging');
+  document.body.classList.remove('ev-moving');
+  document.querySelectorAll('.day-col.drag-over').forEach(e => e.classList.remove('drag-over'));
+  dragEvent = null;
+}
+
+// ── Resize ──
+function evResizeStart(ev, id, handle) {
+  ev.preventDefault();
+  ev.stopPropagation();
+  const calEv = calEvents.find(e => e.id === id);
+  if (!calEv?.start?.dateTime) return;
+
+  const el = document.getElementById('ev-' + id);
+  resizeState = {
+    id, el, handle,
+    startY:     ev.clientY,
+    origTop:    parseFloat(el.style.top),
+    origHeight: parseFloat(el.style.height),
+    origStart:  new Date(calEv.start.dateTime),
+    origEnd:    new Date(calEv.end?.dateTime || calEv.start.dateTime)
+  };
+  document.addEventListener('mousemove', onResizeMove);
+  document.addEventListener('mouseup',   onResizeEnd);
+  document.body.classList.add('resizing');
+}
+
+function onResizeMove(ev) {
+  if (!resizeState) return;
+  const { el, handle, startY, origTop, origHeight } = resizeState;
+  const raw   = ev.clientY - startY;
+  const snapped = Math.round(raw / (HH/4)) * (HH/4); // 15-min snap
+
+  if (handle === 'bot') {
+    el.style.height = Math.max(HH/4, origHeight + snapped) + 'px';
+  } else {
+    const newTop    = origTop + snapped;
+    const newHeight = origHeight - snapped;
+    if (newTop >= 0 && newHeight >= HH/4) {
+      el.style.top    = newTop + 'px';
+      el.style.height = newHeight + 'px';
+    }
+  }
+}
+
+async function onResizeEnd() {
+  if (!resizeState) return;
+  document.removeEventListener('mousemove', onResizeMove);
+  document.removeEventListener('mouseup',   onResizeEnd);
+  document.body.classList.remove('resizing');
+
+  const { id, el, handle, origStart, origEnd } = resizeState;
+  const top    = parseFloat(el.style.top);
+  const height = parseFloat(el.style.height);
+  resizeState  = null;
+
+  let newStart, newEnd;
+  if (handle === 'bot') {
+    newStart = origStart;
+    const endM = Math.round((top + height) / HH * 60 / 15) * 15;
+    newEnd = new Date(origStart);
+    newEnd.setHours(Math.floor(endM/60), endM%60, 0, 0);
+  } else {
+    const startM = Math.round(top / HH * 60 / 15) * 15;
+    newStart = new Date(origStart);
+    newStart.setHours(Math.floor(startM/60), startM%60, 0, 0);
+    newEnd = origEnd;
+  }
+
+  if (newEnd > newStart) {
+    await moveEvent(id, newStart, newEnd);
+  } else {
+    renderWeek();
+  }
+}
+
+async function moveEvent(id, newStart, newEnd) {
+  try {
+    const ev = await apiPatch(`${CAL}/calendars/primary/events/${id}`, {
+      start: { dateTime: newStart.toISOString() },
+      end:   { dateTime: newEnd.toISOString() }
+    });
+    const idx = calEvents.findIndex(e => e.id === id);
+    if (idx >= 0) calEvents[idx] = { ...calEvents[idx], start: ev.start, end: ev.end };
+    renderView();
+    showToast('行程已更新');
+  } catch(e) {
+    showToast('更新失敗：' + e.message);
+    fetchEvents().then(() => renderView());
+  }
 }
 
 // ═══════════════════════════════════════════════
@@ -1343,7 +1518,7 @@ function onColClick(ev, dateStr) {
   const minR = Math.round(((relY % HH) / HH) * 60 / 15) * 15;
   const [dy, dm, dd] = dateStr.split('-').map(Number);
   const start = new Date(dy, dm-1, dd, clamp(hour,0,23), clamp(minR,0,59));
-  const end   = new Date(start.getTime() + 3600000);
+  const end   = new Date(start.getTime() + 3600000); // modal will adjust if title = 直播
   openModal(start, end);
 }
 
@@ -1356,6 +1531,15 @@ function openModal(start, end, title = '') {
   document.getElementById('ev-end').value    = fmtLocal(end);
   document.getElementById('ev-modal').style.display = 'flex';
   setTimeout(() => document.getElementById('ev-title').focus(), 50);
+}
+
+function onTitleInput() {
+  const title = document.getElementById('ev-title').value;
+  const startVal = document.getElementById('ev-start').value;
+  if (!startVal) return;
+  const start = new Date(startVal);
+  const dur = defaultDuration(title);
+  document.getElementById('ev-end').value = fmtLocal(new Date(start.getTime() + dur));
 }
 
 function closeModal() {
@@ -1405,6 +1589,8 @@ function fmtLocal(d) {
 function pad2(n) { return n.toString().padStart(2,'0'); }
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function isLivestream(title) { return /直播/.test(title||''); }
+function defaultDuration(title) { return isLivestream(title) ? 3*3600000 : 3600000; }
 
 function eventsOnDay(date) {
   const s = new Date(date); s.setHours(0,0,0,0);
