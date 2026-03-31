@@ -1,0 +1,1444 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>我的行事曆</title>
+<style>
+:root {
+  --primary: #1a73e8;
+  --primary-dark: #1557b0;
+  --bg: #fff;
+  --sidebar-bg: #f6f8fc;
+  --border: #dadce0;
+  --text: #202124;
+  --text-secondary: #5f6368;
+  --red: #d50000;
+  --hour-height: 60px;
+  --sidebar-width: 256px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Google Sans', Roboto, Arial, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ===== LOGIN ===== */
+#login-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: linear-gradient(135deg, #4285f4 0%, #1a73e8 50%, #0d47a1 100%);
+}
+.login-card {
+  background: white;
+  border-radius: 16px;
+  padding: 48px 40px;
+  text-align: center;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.25);
+  max-width: 380px;
+  width: 90%;
+}
+.login-card h1 { font-size: 26px; color: var(--text); margin-bottom: 8px; font-weight: 500; }
+.login-card p { color: var(--text-secondary); font-size: 14px; margin-bottom: 32px; line-height: 1.5; }
+.btn-google {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: box-shadow 0.2s, background 0.2s;
+  color: var(--text);
+}
+.btn-google:hover { background: #f8f9fa; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+.btn-google svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+/* ===== APP LAYOUT ===== */
+#app {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ===== SIDEBAR ===== */
+#sidebar {
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.sidebar-section {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.sidebar-section h3 {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  letter-spacing: 0.8px;
+  margin-bottom: 10px;
+}
+
+/* ===== MINI CALENDAR ===== */
+.mini-cal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.mini-cal-header span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.mini-cal-nav {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  padding: 4px 6px;
+  border-radius: 50%;
+  font-size: 16px;
+  line-height: 1;
+  transition: background 0.2s;
+}
+.mini-cal-nav:hover { background: rgba(0,0,0,0.08); }
+.mini-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  text-align: center;
+}
+.mini-cal-grid .dn {
+  font-size: 10px;
+  color: var(--text-secondary);
+  padding: 3px 0;
+  font-weight: 600;
+}
+.mini-day {
+  font-size: 11px;
+  padding: 3px 0;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background 0.15s;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mini-day:hover { background: rgba(0,0,0,0.08); }
+.mini-day.today { background: var(--primary); color: white; font-weight: 700; }
+.mini-day.in-week { background: rgba(26,115,232,0.12); }
+.mini-day.today.in-week { background: var(--primary); }
+.mini-day.other-month { color: #ccc; }
+
+/* ===== QUICK IMPORT ===== */
+.quick-import textarea {
+  width: 100%;
+  height: 76px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 11px;
+  resize: none;
+  font-family: 'Courier New', monospace;
+  background: white;
+  color: var(--text);
+  line-height: 1.5;
+}
+.quick-import textarea::placeholder { color: #aaa; }
+.quick-import textarea:focus { outline: none; border-color: var(--primary); }
+.btn-import {
+  width: 100%;
+  margin-top: 6px;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 7px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-import:hover { background: var(--primary-dark); }
+.import-hint { font-size: 10px; color: #aaa; margin-bottom: 6px; line-height: 1.4; }
+
+/* ===== TASKS ===== */
+.tasks-input-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.tasks-input-row input {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  background: white;
+  color: var(--text);
+}
+.tasks-input-row input::placeholder { color: #aaa; }
+.tasks-input-row input:focus { outline: none; border-color: var(--primary); }
+.btn-add-task {
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+}
+.task-list { list-style: none; max-height: 280px; overflow-y: auto; }
+.task-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 2px;
+  border-radius: 6px;
+  cursor: grab;
+  transition: background 0.1s;
+  border-bottom: 1px solid rgba(0,0,0,0.04);
+}
+.task-item:hover { background: rgba(0,0,0,0.04); }
+.task-item:active { cursor: grabbing; }
+.task-item.dragging { opacity: 0.4; }
+.task-check {
+  width: 17px;
+  height: 17px;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  font-size: 10px;
+  color: transparent;
+}
+.task-check:hover { border-color: var(--primary); color: var(--primary); }
+.task-title-text {
+  font-size: 12px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: none;
+}
+.task-del {
+  background: none;
+  border: none;
+  color: #bbb;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 2px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.task-item:hover .task-del { opacity: 1; }
+.task-del:hover { color: var(--red); }
+.tasks-empty { font-size: 11px; color: #bbb; text-align: center; padding: 12px 0; }
+
+/* ===== MAIN ===== */
+#main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* ===== TOOLBAR ===== */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  min-height: 58px;
+  flex-shrink: 0;
+}
+.toolbar-title {
+  font-size: 19px;
+  font-weight: 400;
+  color: var(--text);
+  margin: 0 8px;
+  white-space: nowrap;
+}
+.btn-today {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 6px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text);
+  transition: background 0.15s;
+}
+.btn-today:hover { background: rgba(0,0,0,0.05); }
+.btn-nav {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 34px;
+  height: 34px;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.btn-nav:hover { background: rgba(0,0,0,0.05); }
+.view-switcher {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-left: auto;
+}
+.view-btn {
+  background: none;
+  border: none;
+  padding: 6px 18px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+}
+.view-btn.active { background: var(--primary); color: white; }
+
+/* ===== WEEK VIEW ===== */
+#week-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.week-header {
+  display: grid;
+  grid-template-columns: 52px repeat(7, 1fr);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.week-header-spacer { border-right: 1px solid var(--border); }
+.week-header-day {
+  padding: 8px 4px 6px;
+  text-align: center;
+  border-left: 1px solid var(--border);
+}
+.week-header-day .wh-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  display: block;
+}
+.week-header-day .wh-num {
+  font-size: 22px;
+  font-weight: 400;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 2px auto 0;
+  color: var(--text);
+}
+.week-header-day.is-today .wh-label { color: var(--primary); }
+.week-header-day.is-today .wh-num { background: var(--primary); color: white; }
+.week-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+}
+.week-grid {
+  display: grid;
+  grid-template-columns: 52px repeat(7, 1fr);
+  position: relative;
+  min-height: calc(var(--hour-height) * 24);
+}
+.time-gutter { position: relative; }
+.time-label {
+  height: var(--hour-height);
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding-right: 8px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  transform: translateY(-7px);
+}
+.day-col {
+  border-left: 1px solid var(--border);
+  position: relative;
+  cursor: pointer;
+}
+.day-col.is-today { background: rgba(232, 240, 254, 0.2); }
+.hour-slot {
+  height: var(--hour-height);
+  border-bottom: 1px solid var(--border);
+  position: relative;
+}
+.hour-slot::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 50%;
+  border-bottom: 1px dashed rgba(0,0,0,0.07);
+}
+.hour-slot:hover { background: rgba(26,115,232,0.04); }
+/* Current time line */
+.time-now {
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  z-index: 8;
+  height: 2px;
+  background: var(--red);
+}
+.time-now::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: -4px;
+  width: 10px;
+  height: 10px;
+  background: var(--red);
+  border-radius: 50%;
+}
+/* Calendar events */
+.cal-ev {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  background: #4285f4;
+  color: white;
+  border-radius: 4px;
+  padding: 2px 6px 2px 5px;
+  font-size: 11px;
+  font-weight: 500;
+  overflow: hidden;
+  cursor: pointer;
+  z-index: 4;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  border-left: 3px solid rgba(0,0,0,0.15);
+  min-height: 18px;
+  transition: filter 0.1s;
+}
+.cal-ev:hover { filter: brightness(0.92); z-index: 5; }
+.cal-ev .ev-time { font-size: 9px; opacity: 0.85; display: block; line-height: 1.3; }
+.cal-ev .ev-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ev-del {
+  position: absolute;
+  top: 1px;
+  right: 3px;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.8);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.cal-ev:hover .ev-del { opacity: 1; }
+.ev-del:hover { color: white; }
+/* Drop zone */
+.day-col.drag-over { background: rgba(26,115,232,0.12) !important; }
+
+/* ===== MONTH VIEW ===== */
+#month-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.month-dow-header {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.month-dow-cell {
+  padding: 8px 4px;
+  text-align: center;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.month-body {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+.month-cell {
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 4px 5px;
+  min-height: 110px;
+  cursor: pointer;
+  transition: background 0.1s;
+  overflow: hidden;
+}
+.month-cell:hover { background: rgba(0,0,0,0.015); }
+.month-cell.is-today { background: rgba(232,240,254,0.5); }
+.month-cell.other-month { background: #fafafa; }
+.month-day-num {
+  font-size: 12px;
+  font-weight: 500;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 3px;
+  color: var(--text);
+}
+.month-cell.is-today .month-day-num { background: var(--primary); color: white; }
+.month-cell.other-month .month-day-num { color: #bbb; }
+.month-ev-pill {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: white;
+  background: #4285f4;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  margin-bottom: 2px;
+  cursor: pointer;
+}
+.month-more { font-size: 10px; color: var(--text-secondary); padding: 0 2px; }
+
+/* ===== MODAL ===== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal {
+  background: white;
+  border-radius: 12px;
+  padding: 28px;
+  width: 420px;
+  max-width: 94vw;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.22);
+}
+.modal h2 { font-size: 18px; font-weight: 500; margin-bottom: 22px; }
+.form-group { margin-bottom: 16px; }
+.form-group label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 5px;
+  font-weight: 500;
+}
+.form-group input, .form-group textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 14px;
+  color: var(--text);
+  background: white;
+  transition: border-color 0.15s;
+}
+.form-group input:focus, .form-group textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+.modal-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 22px;
+}
+.btn-cancel {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 20px;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--text);
+  transition: background 0.15s;
+}
+.btn-cancel:hover { background: rgba(0,0,0,0.05); }
+.btn-save {
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 22px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-save:hover { background: var(--primary-dark); }
+
+/* ===== TOAST ===== */
+.toast {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  background: #323232;
+  color: white;
+  padding: 10px 22px;
+  border-radius: 8px;
+  font-size: 13px;
+  z-index: 999;
+  transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+
+/* ===== DRAG GHOST ===== */
+#drag-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 999;
+  background: var(--primary);
+  color: white;
+  padding: 5px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  display: none;
+  transform: translate(-50%, -120%);
+}
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.18); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.3); }
+</style>
+</head>
+<body>
+
+<!-- Login -->
+<div id="login-screen">
+  <div class="login-card">
+    <h1>📅 我的行事曆</h1>
+    <p>使用 Google 帳號登入<br>同步你的行程與待辦事項</p>
+    <button class="btn-google" onclick="login()">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+      </svg>
+      使用 Google 帳號登入
+    </button>
+  </div>
+</div>
+
+<!-- App -->
+<div id="app" style="display:none">
+
+  <!-- Sidebar -->
+  <aside id="sidebar">
+
+    <!-- Mini Calendar -->
+    <div class="sidebar-section">
+      <div class="mini-cal-header">
+        <button class="mini-cal-nav" onclick="miniPrev()">‹</button>
+        <span id="mini-title"></span>
+        <button class="mini-cal-nav" onclick="miniNext()">›</button>
+      </div>
+      <div class="mini-cal-grid" id="mini-grid"></div>
+    </div>
+
+    <!-- Quick Import -->
+    <div class="sidebar-section">
+      <h3>快速文字匯入</h3>
+      <div class="import-hint">格式：MMDD HHMM 標題<br>或：MMDD HHMM-HHMM 標題</div>
+      <div class="quick-import">
+        <textarea id="qi-text" placeholder="0401 2200 直播&#10;0402 0900-1100 會議&#10;0403 1400 整理內容"></textarea>
+        <button class="btn-import" onclick="quickImport()">匯入行程</button>
+      </div>
+    </div>
+
+    <!-- Tasks -->
+    <div class="sidebar-section" style="flex:1; border-bottom:none; display:flex; flex-direction:column;">
+      <h3>待辦事項 <span style="font-size:9px;color:#bbb;text-transform:none;font-weight:400;letter-spacing:0">（拖曳到行事曆）</span></h3>
+      <div class="tasks-input-row">
+        <input type="text" id="new-task" placeholder="新增待辦..." onkeydown="if(event.key==='Enter')addTask()">
+        <button class="btn-add-task" onclick="addTask()">+</button>
+      </div>
+      <ul class="task-list" id="task-list"></ul>
+    </div>
+
+  </aside>
+
+  <!-- Main -->
+  <div id="main">
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <button class="btn-today" onclick="goToday()">今天</button>
+      <button class="btn-nav" onclick="navPrev()">‹</button>
+      <button class="btn-nav" onclick="navNext()">›</button>
+      <span class="toolbar-title" id="toolbar-title"></span>
+      <div class="view-switcher">
+        <button class="view-btn active" id="vbtn-week" onclick="setView('week')">週</button>
+        <button class="view-btn" id="vbtn-month" onclick="setView('month')">月</button>
+      </div>
+    </div>
+
+    <!-- Week View -->
+    <div id="week-view">
+      <div class="week-header" id="week-header"></div>
+      <div class="week-body" id="week-body">
+        <div class="week-grid" id="week-grid"></div>
+      </div>
+    </div>
+
+    <!-- Month View -->
+    <div id="month-view" style="display:none">
+      <div class="month-dow-header" id="month-dow"></div>
+      <div class="month-body" id="month-body"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Event Modal -->
+<div class="modal-overlay" id="ev-modal" style="display:none" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <h2>新增行程</h2>
+    <div class="form-group">
+      <label>標題</label>
+      <input type="text" id="ev-title" placeholder="行程標題" onkeydown="if(event.key==='Enter')saveEvent()">
+    </div>
+    <div class="modal-row">
+      <div class="form-group">
+        <label>開始時間</label>
+        <input type="datetime-local" id="ev-start">
+      </div>
+      <div class="form-group">
+        <label>結束時間</label>
+        <input type="datetime-local" id="ev-end">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">取消</button>
+      <button class="btn-save" onclick="saveEvent()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Drag ghost -->
+<div id="drag-ghost"></div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script src="https://accounts.google.com/gsi/client" onload="initGIS()" async defer></script>
+<script>
+// ═══════════════════════════════════════════════
+//  CONFIG
+// ═══════════════════════════════════════════════
+const CLIENT_ID = '901893770074-kmirlpm14p9m4t0f2b9489uediv18du9.apps.googleusercontent.com';
+const SCOPES    = 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/tasks';
+const CAL       = 'https://www.googleapis.com/calendar/v3';
+const TASKS     = 'https://www.googleapis.com/tasks/v1';
+const TASKS_LIST = '@default';
+const HH        = 60; // hour height px
+
+// ═══════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════
+let tokenClient = null;
+let accessToken = null;
+let viewMode    = 'week';
+let anchor      = new Date();   // week/month anchor
+let miniAnchor  = new Date();   // mini-cal month
+let calEvents   = [];
+let taskList    = [];
+let dragItem    = null;         // task being dragged
+const ghost     = document.getElementById('drag-ghost');
+
+// ═══════════════════════════════════════════════
+//  AUTH
+// ═══════════════════════════════════════════════
+function initGIS() {
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback(r) {
+      if (r.error) { showToast('登入失敗：' + r.error); return; }
+      accessToken = r.access_token;
+      const exp = Date.now() + (r.expires_in - 60) * 1000;
+      sessionStorage.setItem('gca_token', accessToken);
+      sessionStorage.setItem('gca_exp', exp);
+      onLogin();
+    }
+  });
+  // restore session
+  const t = sessionStorage.getItem('gca_token');
+  const e = sessionStorage.getItem('gca_exp');
+  if (t && e && Date.now() < +e) { accessToken = t; onLogin(); }
+}
+
+function login() {
+  if (!tokenClient) { showToast('Google 登入載入中，請稍候再試'); return; }
+  tokenClient.requestAccessToken({ prompt: '' });
+}
+
+async function onLogin() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  await Promise.all([fetchEvents(), fetchTasks()]);
+  renderMiniCal();
+  renderView();
+  updateTimeLine();
+  setInterval(updateTimeLine, 30000);
+}
+
+// ═══════════════════════════════════════════════
+//  API HELPERS
+// ═══════════════════════════════════════════════
+async function apiReq(url, opts = {}) {
+  const headers = { Authorization: `Bearer ${accessToken}`, ...(opts.headers || {}) };
+  const res = await fetch(url, { ...opts, headers });
+  if (res.status === 204) return null;
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error?.message || res.statusText);
+  }
+  return res.json();
+}
+const apiGet    = url        => apiReq(url);
+const apiDel    = url        => apiReq(url, { method: 'DELETE' });
+const apiPost   = (url, b)   => apiReq(url, { method: 'POST',  headers: {'Content-Type':'application/json'}, body: JSON.stringify(b) });
+const apiPatch  = (url, b)   => apiReq(url, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify(b) });
+
+// ═══════════════════════════════════════════════
+//  CALENDAR API
+// ═══════════════════════════════════════════════
+async function fetchEvents() {
+  // broad window: visible month +/- buffer
+  const base = viewMode === 'month'
+    ? new Date(anchor.getFullYear(), anchor.getMonth(), 1)
+    : weekStart(anchor);
+  const tMin = new Date(base); tMin.setDate(tMin.getDate() - 14);
+  const tMax = new Date(base); tMax.setDate(tMax.getDate() + 56);
+  try {
+    const d = await apiGet(
+      `${CAL}/calendars/primary/events?timeMin=${tMin.toISOString()}&timeMax=${tMax.toISOString()}&singleEvents=true&orderBy=startTime&maxResults=500`
+    );
+    calEvents = d.items || [];
+  } catch(e) {
+    showToast('行程載入失敗：' + e.message);
+    calEvents = [];
+  }
+}
+
+async function createEvent(title, start, end) {
+  try {
+    const ev = await apiPost(`${CAL}/calendars/primary/events`, {
+      summary: title,
+      start: { dateTime: start.toISOString() },
+      end:   { dateTime: end.toISOString() }
+    });
+    calEvents.push(ev);
+    renderView();
+    showToast('行程已新增');
+    return ev;
+  } catch(e) { showToast('新增失敗：' + e.message); throw e; }
+}
+
+async function deleteEvent(id) {
+  try {
+    await apiDel(`${CAL}/calendars/primary/events/${id}`);
+    calEvents = calEvents.filter(e => e.id !== id);
+    renderView();
+    showToast('行程已刪除');
+  } catch(e) { showToast('刪除失敗：' + e.message); }
+}
+
+// ═══════════════════════════════════════════════
+//  TASKS API
+// ═══════════════════════════════════════════════
+async function fetchTasks() {
+  try {
+    const d = await apiGet(`${TASKS}/lists/${TASKS_LIST}/tasks?showCompleted=false&maxResults=100`);
+    taskList = (d.items || []).filter(t => t.status !== 'completed');
+    renderTasks();
+  } catch(e) { showToast('待辦載入失敗：' + e.message); taskList = []; }
+}
+
+async function addTask() {
+  const inp = document.getElementById('new-task');
+  const title = inp.value.trim();
+  if (!title) return;
+  inp.value = '';
+  try {
+    const t = await apiPost(`${TASKS}/lists/${TASKS_LIST}/tasks`, { title });
+    taskList.unshift(t);
+    renderTasks();
+    showToast('待辦已新增');
+  } catch(e) { showToast('新增待辦失敗：' + e.message); }
+}
+
+async function completeTask(id) {
+  try {
+    await apiPatch(`${TASKS}/lists/${TASKS_LIST}/tasks/${id}`, {
+      status: 'completed',
+      completed: new Date().toISOString()
+    });
+    taskList = taskList.filter(t => t.id !== id);
+    renderTasks();
+    showToast('待辦完成 ✓');
+  } catch(e) { showToast('更新待辦失敗：' + e.message); }
+}
+
+async function deleteTask(id) {
+  try {
+    await apiDel(`${TASKS}/lists/${TASKS_LIST}/tasks/${id}`);
+    taskList = taskList.filter(t => t.id !== id);
+    renderTasks();
+  } catch(e) { showToast('刪除待辦失敗：' + e.message); }
+}
+
+// ═══════════════════════════════════════════════
+//  QUICK IMPORT
+// ═══════════════════════════════════════════════
+async function quickImport() {
+  const raw = document.getElementById('qi-text').value.trim();
+  if (!raw) return;
+  const year = new Date().getFullYear();
+  const parsed = [];
+
+  for (const line of raw.split('\n')) {
+    const t = line.trim();
+    if (!t) continue;
+    // MMDD HHMM[-HHMM] title
+    const m = t.match(/^(\d{2})(\d{2})\s+(\d{2})(\d{2})(?:-(\d{2})(\d{2}))?\s+(.+)$/);
+    if (!m) { showToast(`無法解析：${t}`); continue; }
+    const [,mo,dy,sh,sm,eh,em,title] = m;
+    const start = new Date(year, +mo-1, +dy, +sh, +sm);
+    const end   = eh ? new Date(year, +mo-1, +dy, +eh, +em)
+                     : new Date(start.getTime() + 3600000);
+    parsed.push({ title, start, end });
+  }
+
+  if (!parsed.length) return;
+  showToast(`匯入中 (${parsed.length} 筆)...`);
+  for (const p of parsed) await createEvent(p.title, p.start, p.end);
+  document.getElementById('qi-text').value = '';
+  showToast(`✓ 已匯入 ${parsed.length} 筆行程`);
+}
+
+// ═══════════════════════════════════════════════
+//  NAVIGATION
+// ═══════════════════════════════════════════════
+function goToday() {
+  anchor = new Date();
+  miniAnchor = new Date();
+  fetchEvents().then(() => { renderMiniCal(); renderView(); });
+}
+
+function navPrev() {
+  if (viewMode === 'week') anchor = addDays(anchor, -7);
+  else { anchor = new Date(anchor.getFullYear(), anchor.getMonth() - 1, 1); miniAnchor = new Date(anchor); renderMiniCal(); }
+  fetchEvents().then(() => renderView());
+}
+
+function navNext() {
+  if (viewMode === 'week') anchor = addDays(anchor, 7);
+  else { anchor = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 1); miniAnchor = new Date(anchor); renderMiniCal(); }
+  fetchEvents().then(() => renderView());
+}
+
+function setView(v) {
+  viewMode = v;
+  document.getElementById('vbtn-week').classList.toggle('active', v === 'week');
+  document.getElementById('vbtn-month').classList.toggle('active', v === 'month');
+  document.getElementById('week-view').style.display  = v === 'week'  ? 'flex' : 'none';
+  document.getElementById('month-view').style.display = v === 'month' ? 'flex' : 'none';
+  fetchEvents().then(() => renderView());
+}
+
+// ═══════════════════════════════════════════════
+//  MINI CALENDAR
+// ═══════════════════════════════════════════════
+function renderMiniCal() {
+  const y = miniAnchor.getFullYear(), m = miniAnchor.getMonth();
+  document.getElementById('mini-title').textContent = `${y}年 ${m+1}月`;
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const ws = weekStart(anchor);
+  const we = addDays(ws, 6);
+
+  const first = new Date(y, m, 1).getDay();
+  const days  = new Date(y, m+1, 0).getDate();
+  const DOW = ['日','一','二','三','四','五','六'];
+
+  let h = DOW.map(d => `<div class="dn">${d}</div>`).join('');
+
+  // prev month pad
+  for (let i = 0; i < first; i++) {
+    const d = new Date(y, m, -first+i+1);
+    h += miniDayHtml(d, today, ws, we, true);
+  }
+  for (let d = 1; d <= days; d++) {
+    h += miniDayHtml(new Date(y, m, d), today, ws, we, false);
+  }
+  const trail = (first + days) % 7;
+  if (trail) for (let d = 1; d <= 7 - trail; d++) {
+    h += miniDayHtml(new Date(y, m+1, d), today, ws, we, true);
+  }
+
+  document.getElementById('mini-grid').innerHTML = h;
+}
+
+function miniDayHtml(d, today, ws, we, other) {
+  const t = d.getTime();
+  let cls = 'mini-day';
+  if (other) cls += ' other-month';
+  if (t === today.getTime()) cls += ' today';
+  else if (t >= ws.getTime() && t <= we.getTime()) cls += ' in-week';
+  const Y = d.getFullYear(), M = d.getMonth(), D = d.getDate();
+  return `<div class="${cls}" onclick="miniClick(${Y},${M},${D})">${D}</div>`;
+}
+
+function miniPrev() { miniAnchor = new Date(miniAnchor.getFullYear(), miniAnchor.getMonth()-1, 1); renderMiniCal(); }
+function miniNext() { miniAnchor = new Date(miniAnchor.getFullYear(), miniAnchor.getMonth()+1, 1); renderMiniCal(); }
+function miniClick(y, m, d) {
+  anchor = new Date(y, m, d);
+  if (viewMode === 'month') { miniAnchor = new Date(y, m, 1); renderMiniCal(); }
+  fetchEvents().then(() => renderView());
+}
+
+// ═══════════════════════════════════════════════
+//  TOOLBAR TITLE
+// ═══════════════════════════════════════════════
+function updateTitle() {
+  const el = document.getElementById('toolbar-title');
+  if (viewMode === 'week') {
+    const ws = weekStart(anchor), we = addDays(ws, 6);
+    const sy = ws.getFullYear(), sm = ws.getMonth()+1, sd = ws.getDate();
+    const ey = we.getFullYear(), em = we.getMonth()+1, ed = we.getDate();
+    el.textContent = sy === ey && sm === em
+      ? `${sy}年 ${sm}月 ${sd}–${ed}日`
+      : `${sy}年${sm}月${sd}日 – ${ey}年${em}月${ed}日`;
+  } else {
+    el.textContent = `${anchor.getFullYear()}年 ${anchor.getMonth()+1}月`;
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  RENDER DISPATCH
+// ═══════════════════════════════════════════════
+function renderView() {
+  updateTitle();
+  renderMiniCal();
+  if (viewMode === 'week') renderWeek();
+  else renderMonth();
+}
+
+// ═══════════════════════════════════════════════
+//  WEEK VIEW
+// ═══════════════════════════════════════════════
+function renderWeek() {
+  const ws = weekStart(anchor);
+  const today = new Date(); today.setHours(0,0,0,0);
+  const DOW = ['日','一','二','三','四','五','六'];
+
+  // Header
+  let hh = '<div class="week-header-spacer"></div>';
+  for (let i = 0; i < 7; i++) {
+    const d = addDays(ws, i);
+    const isT = d.getTime() === today.getTime();
+    hh += `<div class="week-header-day${isT?' is-today':''}">
+      <span class="wh-label">${DOW[d.getDay()]}</span>
+      <span class="wh-num">${d.getDate()}</span>
+    </div>`;
+  }
+  document.getElementById('week-header').innerHTML = hh;
+
+  // Grid
+  let g = '<div class="time-gutter">';
+  for (let h = 0; h < 24; h++) {
+    g += `<div class="time-label">${h === 0 ? '' : pad2(h)+':00'}</div>`;
+  }
+  g += '</div>';
+
+  for (let i = 0; i < 7; i++) {
+    const d = addDays(ws, i);
+    const ds = fmtDate(d);
+    const isT = d.getTime() === today.getTime();
+    g += `<div class="day-col${isT?' is-today':''}" data-date="${ds}"
+      onclick="onColClick(event,'${ds}')"
+      ondragover="onDragOver(event)" ondragleave="onDragLeave(event)"
+      ondrop="onDrop(event,'${ds}')">`;
+    for (let h = 0; h < 24; h++) {
+      g += `<div class="hour-slot" data-hour="${h}"></div>`;
+    }
+    // Events
+    const evs = eventsOnDay(d);
+    for (const { ev, top, height, left, width } of layoutEvents(evs)) {
+      const start = new Date(ev.start?.dateTime || ev.start?.date);
+      const end   = new Date(ev.end?.dateTime   || ev.end?.date || start);
+      const tl    = ev.start?.dateTime ? `${fmtTime(start)}–${fmtTime(end)}` : '全天';
+      const color = evColor(ev);
+      g += `<div class="cal-ev" style="top:${top}px;height:${height}px;left:${left}%;width:${width}%;background:${color}"
+        title="${esc(ev.summary||'')}" onclick="event.stopPropagation()">
+        <button class="ev-del" onclick="deleteEvent('${ev.id}');event.stopPropagation()">×</button>
+        <span class="ev-time">${tl}</span>
+        <span class="ev-title">${esc(ev.summary||'(無標題)')}</span>
+      </div>`;
+    }
+    // Time line
+    if (isT) g += `<div class="time-now" id="time-now"></div>`;
+    g += '</div>';
+  }
+
+  document.getElementById('week-grid').innerHTML = g;
+  updateTimeLine();
+  scrollToCurrent();
+}
+
+function layoutEvents(evs) {
+  const timed   = evs.filter(e => e.start?.dateTime);
+  const allDay  = evs.filter(e => !e.start?.dateTime);
+  const result  = [];
+
+  allDay.forEach((ev, i) => result.push({ ev, top: 2+i*20, height: 18, left: 0, width: 96 }));
+
+  if (!timed.length) return result;
+  timed.sort((a,b) => new Date(a.start.dateTime) - new Date(b.start.dateTime));
+
+  // Column assignment
+  const cols = []; // cols[i] = end time of last event in col i
+  timed.forEach(ev => {
+    const s = new Date(ev.start.dateTime).getTime();
+    const e = new Date(ev.end?.dateTime || ev.start.dateTime).getTime();
+    let c = cols.findIndex(t => t <= s);
+    if (c === -1) c = cols.length;
+    cols[c] = e;
+    ev._c = c;
+  });
+
+  // Max concurrent col per event
+  timed.forEach(ev => {
+    const s = new Date(ev.start.dateTime).getTime();
+    const e = new Date(ev.end?.dateTime || ev.start.dateTime).getTime();
+    let maxC = ev._c;
+    timed.forEach(o => {
+      if (o === ev) return;
+      const os = new Date(o.start.dateTime).getTime();
+      const oe = new Date(o.end?.dateTime || o.start.dateTime).getTime();
+      if (os < e && oe > s) maxC = Math.max(maxC, o._c);
+    });
+    const total = maxC + 1;
+    const sm = new Date(ev.start.dateTime);
+    const em = new Date(ev.end?.dateTime || ev.start.dateTime);
+    const startM = sm.getHours()*60 + sm.getMinutes();
+    const endM   = em.getHours()*60 + em.getMinutes();
+    const dur    = Math.max(endM - startM, 15);
+    result.push({
+      ev,
+      top:    (startM/60) * HH,
+      height: Math.max((dur/60)*HH, 20),
+      left:   (ev._c / total) * 96,
+      width:  (1/total) * 96
+    });
+    delete ev._c;
+  });
+
+  return result;
+}
+
+function scrollToCurrent() {
+  const body = document.getElementById('week-body');
+  const now  = new Date();
+  const mins = now.getHours()*60 + now.getMinutes();
+  body.scrollTop = Math.max(0, (mins/60)*HH - body.clientHeight/2);
+}
+
+function updateTimeLine() {
+  const el = document.getElementById('time-now');
+  if (!el) return;
+  const now  = new Date();
+  const mins = now.getHours()*60 + now.getMinutes();
+  el.style.top = (mins/60)*HH + 'px';
+}
+
+// ═══════════════════════════════════════════════
+//  MONTH VIEW
+// ═══════════════════════════════════════════════
+function renderMonth() {
+  const y = anchor.getFullYear(), m = anchor.getMonth();
+  const today = new Date(); today.setHours(0,0,0,0);
+  const DOW = ['日','一','二','三','四','五','六'];
+
+  document.getElementById('month-dow').innerHTML =
+    DOW.map(d => `<div class="month-dow-cell">${d}</div>`).join('');
+
+  const first = new Date(y, m, 1).getDay();
+  const days  = new Date(y, m+1, 0).getDate();
+  let html = '';
+
+  const cell = (d, other) => {
+    const ds = fmtDate(d);
+    const isT = d.getTime() === today.getTime();
+    let cls = 'month-cell';
+    if (other) cls += ' other-month';
+    if (isT)   cls += ' is-today';
+    const evs = eventsOnDay(d);
+    let evHtml = evs.slice(0, 4).map(e => {
+      const color = evColor(e);
+      return `<div class="month-ev-pill" style="background:${color}"
+        onclick="onMonthEvClick('${e.id}');event.stopPropagation()">${esc(e.summary||'(無標題)')}</div>`;
+    }).join('');
+    if (evs.length > 4) evHtml += `<div class="month-more">+${evs.length-4} 筆</div>`;
+    return `<div class="${cls}" onclick="onMonthCellClick('${ds}')">
+      <div class="month-day-num">${d.getDate()}</div>${evHtml}</div>`;
+  };
+
+  for (let i = 0; i < first; i++) html += cell(new Date(y, m, -first+i+1), true);
+  for (let d = 1; d <= days; d++)  html += cell(new Date(y, m, d), false);
+  const trail = (first + days) % 7;
+  if (trail) for (let d = 1; d <= 7-trail; d++) html += cell(new Date(y, m+1, d), true);
+
+  document.getElementById('month-body').innerHTML = html;
+}
+
+function onMonthCellClick(ds) {
+  const [y, m, d] = ds.split('-').map(Number);
+  anchor = new Date(y, m-1, d);
+  setView('week');
+}
+
+function onMonthEvClick(id) {
+  if (confirm('刪除此行程？')) deleteEvent(id);
+}
+
+// ═══════════════════════════════════════════════
+//  TASK LIST RENDER
+// ═══════════════════════════════════════════════
+function renderTasks() {
+  const el = document.getElementById('task-list');
+  if (!taskList.length) {
+    el.innerHTML = '<li class="tasks-empty">無待辦事項<br>（新增後可拖曳到行事曆）</li>';
+    return;
+  }
+  el.innerHTML = taskList.map(t => `
+    <li class="task-item" draggable="true"
+      ondragstart="taskDragStart(event,'${t.id}')"
+      ondragend="taskDragEnd(event)">
+      <div class="task-check" onclick="completeTask('${t.id}')" title="標記完成">✓</div>
+      <span class="task-title-text" title="${esc(t.title||'')}">${esc(t.title||'(無標題)')}</span>
+      <button class="task-del" onclick="deleteTask('${t.id}')" title="刪除">×</button>
+    </li>`).join('');
+}
+
+// ═══════════════════════════════════════════════
+//  DRAG & DROP (tasks → calendar)
+// ═══════════════════════════════════════════════
+function taskDragStart(ev, id) {
+  dragItem = taskList.find(t => t.id === id);
+  if (!dragItem) return;
+  ev.dataTransfer.effectAllowed = 'copy';
+  ev.dataTransfer.setData('text/plain', id);
+  ev.currentTarget.classList.add('dragging');
+  ghost.textContent = dragItem.title || '(無標題)';
+  ghost.style.display = 'block';
+  document.addEventListener('dragover', moveGhost);
+}
+
+function taskDragEnd(ev) {
+  ev.currentTarget.classList.remove('dragging');
+  ghost.style.display = 'none';
+  document.removeEventListener('dragover', moveGhost);
+  document.querySelectorAll('.day-col.drag-over').forEach(e => e.classList.remove('drag-over'));
+  dragItem = null;
+}
+
+function moveGhost(ev) {
+  ghost.style.left = ev.clientX + 'px';
+  ghost.style.top  = ev.clientY + 'px';
+}
+
+function onDragOver(ev) {
+  if (!dragItem) return;
+  ev.preventDefault();
+  ev.dataTransfer.dropEffect = 'copy';
+  ev.currentTarget.classList.add('drag-over');
+}
+
+function onDragLeave(ev) {
+  ev.currentTarget.classList.remove('drag-over');
+}
+
+function onDrop(ev, dateStr) {
+  ev.preventDefault();
+  ev.currentTarget.classList.remove('drag-over');
+  if (!dragItem) return;
+
+  const body = document.getElementById('week-body');
+  const rect = ev.currentTarget.getBoundingClientRect();
+  const relY = ev.clientY - rect.top + body.scrollTop;
+  const hour = Math.floor(relY / HH);
+  const minR = Math.round(((relY % HH) / HH) * 60 / 15) * 15;
+
+  const [dy, dm, dd] = dateStr.split('-').map(Number);
+  const start = new Date(dy, dm-1, dd, clamp(hour,0,23), clamp(minR,0,59));
+  const end   = new Date(start.getTime() + 3600000);
+
+  const tid = dragItem.id;
+  const ttl = dragItem.title;
+  createEvent(ttl, start, end).then(() => completeTask(tid));
+}
+
+// ═══════════════════════════════════════════════
+//  GRID CLICK → NEW EVENT
+// ═══════════════════════════════════════════════
+function onColClick(ev, dateStr) {
+  if (ev.target.closest('.cal-ev')) return;
+  const body = document.getElementById('week-body');
+  const rect = ev.currentTarget.getBoundingClientRect();
+  const relY = ev.clientY - rect.top + body.scrollTop;
+  const hour = Math.floor(relY / HH);
+  const minR = Math.round(((relY % HH) / HH) * 60 / 15) * 15;
+  const [dy, dm, dd] = dateStr.split('-').map(Number);
+  const start = new Date(dy, dm-1, dd, clamp(hour,0,23), clamp(minR,0,59));
+  const end   = new Date(start.getTime() + 3600000);
+  openModal(start, end);
+}
+
+// ═══════════════════════════════════════════════
+//  EVENT MODAL
+// ═══════════════════════════════════════════════
+function openModal(start, end, title = '') {
+  document.getElementById('ev-title').value  = title;
+  document.getElementById('ev-start').value  = fmtLocal(start);
+  document.getElementById('ev-end').value    = fmtLocal(end);
+  document.getElementById('ev-modal').style.display = 'flex';
+  setTimeout(() => document.getElementById('ev-title').focus(), 50);
+}
+
+function closeModal() {
+  document.getElementById('ev-modal').style.display = 'none';
+}
+
+async function saveEvent() {
+  const title = document.getElementById('ev-title').value.trim();
+  const s     = document.getElementById('ev-start').value;
+  const e     = document.getElementById('ev-end').value;
+  if (!title) { showToast('請輸入標題'); document.getElementById('ev-title').focus(); return; }
+  if (!s || !e) { showToast('請填寫時間'); return; }
+  const start = new Date(s), end = new Date(e);
+  if (end <= start) { showToast('結束時間必須晚於開始時間'); return; }
+  closeModal();
+  await createEvent(title, start, end);
+}
+
+// ═══════════════════════════════════════════════
+//  UTILITIES
+// ═══════════════════════════════════════════════
+function weekStart(d) {
+  const r = new Date(d);
+  r.setDate(r.getDate() - r.getDay());
+  r.setHours(0,0,0,0);
+  return r;
+}
+
+function addDays(d, n) {
+  const r = new Date(d);
+  r.setDate(r.getDate() + n);
+  return r;
+}
+
+function fmtDate(d) {
+  return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+}
+
+function fmtTime(d) {
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+function fmtLocal(d) {
+  return `${fmtDate(d)}T${fmtTime(d)}`;
+}
+
+function pad2(n) { return n.toString().padStart(2,'0'); }
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function eventsOnDay(date) {
+  const s = new Date(date); s.setHours(0,0,0,0);
+  const e = new Date(date); e.setHours(23,59,59,999);
+  return calEvents.filter(ev => {
+    if (!ev.start) return false;
+    const es = new Date(ev.start.dateTime || ev.start.date);
+    const ee = new Date(ev.end?.dateTime  || ev.end?.date  || es);
+    return es <= e && ee >= s;
+  });
+}
+
+const COLORS = ['#4285f4','#0f9d58','#f4b400','#db4437','#ab47bc','#00acc1','#ff7043','#795548','#607d8b'];
+function evColor(ev) {
+  if (ev.colorId) {
+    const MAP = {'1':'#a4bdfc','2':'#7ae7bf','3':'#dbadff','4':'#ff887c','5':'#fbd75b','6':'#ffb878','7':'#46d6db','8':'#e1e1e1','9':'#5484ed','10':'#51b749','11':'#dc2127'};
+    if (MAP[ev.colorId]) return MAP[ev.colorId];
+  }
+  let h = 0;
+  for (const c of (ev.id||'')) h = (h*31 + c.charCodeAt(0)) & 0xffff;
+  return COLORS[h % COLORS.length];
+}
+
+// ═══════════════════════════════════════════════
+//  TOAST
+// ═══════════════════════════════════════════════
+let toastT = null;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  if (toastT) clearTimeout(toastT);
+  toastT = setTimeout(() => el.classList.remove('show'), 3000);
+}
+</script>
+</body>
+</html>
