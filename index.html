@@ -204,56 +204,59 @@ body {
   cursor: pointer;
   line-height: 1;
 }
-.task-list { list-style: none; max-height: 280px; overflow-y: auto; }
-.task-item {
+.task-list { list-style: none; overflow-y: auto; flex: 1; }
+.task-card {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 2px;
+  padding: 7px 10px;
   border-radius: 6px;
+  margin-bottom: 5px;
   cursor: grab;
-  transition: background 0.1s;
-  border-bottom: 1px solid rgba(0,0,0,0.04);
+  transition: filter 0.15s, opacity 0.15s;
+  border-left: 3px solid #4285f4;
+  user-select: none;
 }
-.task-item:hover { background: rgba(0,0,0,0.04); }
-.task-item:active { cursor: grabbing; }
-.task-item.dragging { opacity: 0.4; }
-.task-check {
-  width: 17px;
-  height: 17px;
-  border: 2px solid var(--border);
-  border-radius: 50%;
-  cursor: pointer;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s;
-  font-size: 10px;
-  color: transparent;
-}
-.task-check:hover { border-color: var(--primary); color: var(--primary); }
-.task-title-text {
-  font-size: 12px;
+.task-card:active { cursor: grabbing; }
+.task-card:hover { filter: brightness(0.93); }
+.task-card.dragging { opacity: 0.35; }
+.task-card.done { opacity: 0.7; cursor: default; }
+.task-card.done .task-card-title { text-decoration: line-through; }
+.task-card-title {
   flex: 1;
+  font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  user-select: none;
+  color: var(--text);
 }
-.task-del {
+.task-card-actions { display: flex; gap: 2px; flex-shrink: 0; }
+.task-card-btn {
   background: none;
   border: none;
-  color: #bbb;
   cursor: pointer;
-  font-size: 16px;
-  padding: 0 2px;
+  font-size: 13px;
+  padding: 2px 3px;
   line-height: 1;
-  opacity: 0;
+  border-radius: 3px;
+  opacity: 0.45;
   transition: opacity 0.15s;
 }
-.task-item:hover .task-del { opacity: 1; }
-.task-del:hover { color: var(--red); }
+.task-card:hover .task-card-btn { opacity: 0.8; }
+.task-card-btn:hover { opacity: 1 !important; background: rgba(0,0,0,0.08); }
+.task-card-del { color: var(--red); opacity: 0; }
+.task-card:hover .task-card-del { opacity: 0.4; }
+.task-card-del:hover { opacity: 1 !important; }
+.task-completed-sep {
+  font-size: 10px;
+  color: #bbb;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 8px 0 4px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
 .tasks-empty { font-size: 11px; color: #bbb; text-align: center; padding: 12px 0; }
 
 /* ===== MAIN ===== */
@@ -824,9 +827,9 @@ let anchor      = new Date();   // week/month anchor
 let miniAnchor  = new Date();   // mini-cal month
 let calEvents   = [];
 let taskList    = [];
-let dragItem    = null;         // task being dragged
-let dragEvent   = null;         // { id, offsetMins, duration }  calendar event being moved
-let resizeState = null;         // resize in progress
+let dragItem    = null;   // task being dragged
+let moveState   = null;   // { id, el, ghostEl, offsetX, offsetY, duration } cal event mouse-move
+let resizeState = null;   // resize in progress
 const ghost     = document.getElementById('drag-ghost');
 
 // ═══════════════════════════════════════════════
@@ -933,8 +936,8 @@ async function deleteEvent(id) {
 // ═══════════════════════════════════════════════
 async function fetchTasks() {
   try {
-    const d = await apiGet(`${TASKS}/lists/${TASKS_LIST}/tasks?showCompleted=false&maxResults=100`);
-    taskList = (d.items || []).filter(t => t.status !== 'completed');
+    const d = await apiGet(`${TASKS}/lists/${TASKS_LIST}/tasks?showCompleted=true&showHidden=true&maxResults=200`);
+    taskList = (d.items || []).sort((a, b) => (a.status === 'completed' ? 1 : 0) - (b.status === 'completed' ? 1 : 0));
     renderTasks();
   } catch(e) { showToast('待辦載入失敗：' + e.message); taskList = []; }
 }
@@ -958,9 +961,21 @@ async function completeTask(id) {
       status: 'completed',
       completed: new Date().toISOString()
     });
-    taskList = taskList.filter(t => t.id !== id);
+    const found = taskList.find(t => t.id === id);
+    if (found) found.status = 'completed';
+    taskList.sort((a, b) => (a.status === 'completed' ? 1 : 0) - (b.status === 'completed' ? 1 : 0));
     renderTasks();
     showToast('待辦完成 ✓');
+  } catch(e) { showToast('更新待辦失敗：' + e.message); }
+}
+
+async function uncompleteTask(id) {
+  try {
+    await apiPatch(`${TASKS}/lists/${TASKS_LIST}/tasks/${id}`, { status: 'needsAction', completed: null });
+    const found = taskList.find(t => t.id === id);
+    if (found) { found.status = 'needsAction'; delete found.completed; }
+    taskList.sort((a, b) => (a.status === 'completed' ? 1 : 0) - (b.status === 'completed' ? 1 : 0));
+    renderTasks();
   } catch(e) { showToast('更新待辦失敗：' + e.message); }
 }
 
@@ -1157,9 +1172,7 @@ function renderWeek() {
       g += `<div class="cal-ev" id="ev-${ev.id}"
         style="top:${top}px;height:${Math.max(height,20)}px;left:${left}%;width:${width}%;background:${color}"
         title="${esc(ev.summary||'')}"
-        draggable="true"
-        ondragstart="evDragStart(event,'${ev.id}')"
-        ondragend="evDragEnd(event)"
+        onmousedown="evMoveStart(event,'${ev.id}')"
         onclick="event.stopPropagation()">
         <div class="ev-rz ev-rz-top" onmousedown="evResizeStart(event,'${ev.id}','top')"></div>
         <button class="ev-del" onclick="deleteEvent('${ev.id}');event.stopPropagation()">×</button>
@@ -1303,14 +1316,33 @@ function renderTasks() {
     el.innerHTML = '<li class="tasks-empty">無待辦事項<br>（新增後可拖曳到行事曆）</li>';
     return;
   }
-  el.innerHTML = taskList.map(t => `
-    <li class="task-item" draggable="true"
+  const pending   = taskList.filter(t => t.status !== 'completed');
+  const completed = taskList.filter(t => t.status === 'completed');
+
+  const cardHtml = (t) => {
+    const cat  = taskCategory(t.title);
+    const done = t.status === 'completed';
+    return `<li class="task-card${done ? ' done' : ''}"
+      style="background:${cat.bg};border-left-color:${cat.color}"
+      draggable="${done ? 'false' : 'true'}"
       ondragstart="taskDragStart(event,'${t.id}')"
       ondragend="taskDragEnd(event)">
-      <div class="task-check" onclick="completeTask('${t.id}')" title="標記完成">✓</div>
-      <span class="task-title-text" title="${esc(t.title||'')}">${esc(t.title||'(無標題)')}</span>
-      <button class="task-del" onclick="deleteTask('${t.id}')" title="刪除">×</button>
-    </li>`).join('');
+      <span class="task-card-title" title="${esc(t.title||'')}">${esc(t.title||'(無標題)')}</span>
+      <div class="task-card-actions">
+        <button class="task-card-btn" style="color:${cat.color}"
+          onclick="${done ? `uncompleteTask('${t.id}')` : `completeTask('${t.id}')`}"
+          title="${done ? '取消完成' : '標記完成'}">${done ? '↩' : '✓'}</button>
+        <button class="task-card-btn task-card-del" onclick="deleteTask('${t.id}');event.stopPropagation()" title="刪除">×</button>
+      </div>
+    </li>`;
+  };
+
+  let html = pending.map(cardHtml).join('');
+  if (completed.length) {
+    html += `<li class="task-completed-sep">已完成 (${completed.length})</li>`;
+    html += completed.map(cardHtml).join('');
+  }
+  el.innerHTML = html;
 }
 
 // ═══════════════════════════════════════════════
@@ -1341,9 +1373,9 @@ function moveGhost(ev) {
 }
 
 function onDragOver(ev) {
-  if (!dragItem && !dragEvent) return;
+  if (!dragItem) return;
   ev.preventDefault();
-  ev.dataTransfer.dropEffect = dragEvent ? 'move' : 'copy';
+  ev.dataTransfer.dropEffect = 'copy';
   ev.currentTarget.classList.add('drag-over');
 }
 
@@ -1359,20 +1391,6 @@ function onDrop(ev, dateStr) {
   const rect = ev.currentTarget.getBoundingClientRect();
   const relY = ev.clientY - rect.top + body.scrollTop;
 
-  if (dragEvent) {
-    // ── Move calendar event ──
-    const totalMins = Math.round((relY / HH) * 60 / 15) * 15;
-    const startMins = clamp(totalMins - dragEvent.offsetMins, 0, 23*60);
-    const [dy, dm, dd] = dateStr.split('-').map(Number);
-    const newStart = new Date(dy, dm-1, dd,
-      Math.floor(startMins/60), startMins%60, 0, 0);
-    const newEnd   = new Date(newStart.getTime() + dragEvent.duration);
-    moveEvent(dragEvent.id, newStart, newEnd);
-    dragEvent = null;
-    document.body.classList.remove('ev-moving');
-    return;
-  }
-
   if (dragItem) {
     // ── Drop task → new event ──
     const hour = Math.floor(relY / HH);
@@ -1386,38 +1404,77 @@ function onDrop(ev, dateStr) {
   }
 }
 
-// ── Calendar event drag (move) ──
-function evDragStart(ev, id) {
+// ── Calendar event move (mouse-based, no flicker) ──
+function evMoveStart(ev, id) {
+  if (ev.target.closest('.ev-rz') || ev.target.closest('.ev-del')) return;
+  ev.preventDefault();
   ev.stopPropagation();
   const calEv = calEvents.find(e => e.id === id);
-  if (!calEv?.start?.dateTime) { ev.preventDefault(); return; }
+  if (!calEv?.start?.dateTime) return;
 
   const el   = ev.currentTarget;
   const rect = el.getBoundingClientRect();
-  const body = document.getElementById('week-body');
-  const relY = ev.clientY - rect.top;
-  const offsetMins = Math.round((relY / HH) * 60);
+
+  // Clone as fixed ghost
+  const ghostEl = el.cloneNode(true);
+  ghostEl.style.cssText = `
+    position:fixed; pointer-events:none; z-index:500;
+    width:${rect.width}px; height:${rect.height}px;
+    left:${rect.left}px; top:${rect.top}px;
+    opacity:0.88; box-shadow:0 6px 24px rgba(0,0,0,0.35);
+    transform:scale(1.03); transition:none;
+  `;
+  document.body.appendChild(ghostEl);
+  el.style.opacity = '0.22';
 
   const origStart = new Date(calEv.start.dateTime);
   const origEnd   = new Date(calEv.end?.dateTime || calEv.start.dateTime);
-  dragEvent = { id, offsetMins, duration: origEnd - origStart };
-  dragItem  = null;
-
-  // Transparent drag image so we can see the faded original
-  const img = new Image();
-  img.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
-  ev.dataTransfer.setDragImage(img, 0, 0);
-  ev.dataTransfer.effectAllowed = 'move';
-
-  el.classList.add('is-dragging');
+  moveState = {
+    id, el, ghostEl,
+    offsetX: ev.clientX - rect.left,
+    offsetY: ev.clientY - rect.top,
+    duration: origEnd - origStart
+  };
+  document.addEventListener('mousemove', onEvMoveMove);
+  document.addEventListener('mouseup',   onEvMoveEnd);
   document.body.classList.add('ev-moving');
 }
 
-function evDragEnd(ev) {
-  ev.currentTarget.classList.remove('is-dragging');
-  document.body.classList.remove('ev-moving');
+function onEvMoveMove(ev) {
+  if (!moveState) return;
+  const { ghostEl, offsetX, offsetY } = moveState;
+  ghostEl.style.left = (ev.clientX - offsetX) + 'px';
+  ghostEl.style.top  = (ev.clientY - offsetY) + 'px';
   document.querySelectorAll('.day-col.drag-over').forEach(e => e.classList.remove('drag-over'));
-  dragEvent = null;
+  const target = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.day-col');
+  if (target) target.classList.add('drag-over');
+}
+
+async function onEvMoveEnd(ev) {
+  if (!moveState) return;
+  document.removeEventListener('mousemove', onEvMoveMove);
+  document.removeEventListener('mouseup',   onEvMoveEnd);
+  document.body.classList.remove('ev-moving');
+
+  const { id, el, ghostEl, offsetY, duration } = moveState;
+  moveState = null;
+  ghostEl.remove();
+  el.style.opacity = '';
+  document.querySelectorAll('.day-col.drag-over').forEach(e => e.classList.remove('drag-over'));
+
+  const target = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.day-col');
+  if (!target) return;
+
+  const dateStr = target.dataset.date;
+  const body    = document.getElementById('week-body');
+  const rect    = target.getBoundingClientRect();
+  const relY    = ev.clientY - rect.top + body.scrollTop;
+  const offsetMins = Math.round((offsetY / HH) * 60);
+  const startMins  = clamp(Math.round((relY / HH) * 60 / 15) * 15 - offsetMins, 0, 23*60);
+  const [dy, dm, dd] = dateStr.split('-').map(Number);
+  const newStart = new Date(dy, dm-1, dd, Math.floor(startMins/60), startMins%60, 0, 0);
+  const newEnd   = new Date(newStart.getTime() + duration);
+  await moveEvent(id, newStart, newEnd);
 }
 
 // ── Resize ──
@@ -1603,15 +1660,20 @@ function eventsOnDay(date) {
   });
 }
 
-const COLORS = ['#4285f4','#0f9d58','#f4b400','#db4437','#ab47bc','#00acc1','#ff7043','#795548','#607d8b'];
+function taskCategory(title) {
+  const t = title || '';
+  if (/直播|開播|live/i.test(t))              return { label:'直播', color:'#00acc1', bg:'rgba(0,172,193,0.13)' };
+  if (/會議|開會|meeting|討論|sync/i.test(t))  return { label:'會議', color:'#e91e63', bg:'rgba(233,30,99,0.13)' };
+  if (/深度|研究|調查|分析/i.test(t))           return { label:'深度', color:'#7c4dff', bg:'rgba(124,77,255,0.13)' };
+  return { label:'工作', color:'#4285f4', bg:'rgba(66,133,244,0.13)' };
+}
+
 function evColor(ev) {
   if (ev.colorId) {
     const MAP = {'1':'#a4bdfc','2':'#7ae7bf','3':'#dbadff','4':'#ff887c','5':'#fbd75b','6':'#ffb878','7':'#46d6db','8':'#e1e1e1','9':'#5484ed','10':'#51b749','11':'#dc2127'};
     if (MAP[ev.colorId]) return MAP[ev.colorId];
   }
-  let h = 0;
-  for (const c of (ev.id||'')) h = (h*31 + c.charCodeAt(0)) & 0xffff;
-  return COLORS[h % COLORS.length];
+  return taskCategory(ev.summary).color;
 }
 
 // ═══════════════════════════════════════════════
