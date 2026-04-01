@@ -258,6 +258,21 @@ body {
   margin-top: 4px;
 }
 .tasks-empty { font-size: 11px; color: #bbb; text-align: center; padding: 12px 0; }
+.task-completed-toggle {
+  width: 100%;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+  padding: 8px 4px 4px;
+  cursor: pointer;
+  letter-spacing: 0.3px;
+}
+.task-completed-toggle:hover { color: var(--text); }
+.task-child { margin-left: 14px !important; }
 
 /* ===== MAIN ===== */
 #main {
@@ -614,7 +629,7 @@ body.ev-moving * { cursor: grabbing !important; user-select: none !important; }
   outline: none;
   border-color: var(--primary);
 }
-.modal-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.modal-row { display: grid; grid-template-columns: 1fr; gap: 0; }
 .modal-actions {
   display: flex;
   gap: 8px;
@@ -827,7 +842,9 @@ let anchor      = new Date();   // week/month anchor
 let miniAnchor  = new Date();   // mini-cal month
 let calEvents   = [];
 let taskList    = [];
-let dragItem    = null;   // task being dragged
+let calList          = [];     // [{ id, summary, backgroundColor }] from calendarList API
+let completedVisible = false;  // toggle for completed tasks section in sidebar
+let dragItem         = null;   // task being dragged
 let moveState   = null;   // { id, el, ghostEl, offsetX, offsetY, duration } cal event mouse-move
 let resizeState = null;   // resize in progress
 const ghost     = document.getElementById('drag-ghost');
@@ -862,6 +879,7 @@ function login() {
 async function onLogin() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
+  await fetchCalList();
   await Promise.all([fetchEvents(), fetchTasks()]);
   renderMiniCal();
   renderView();
@@ -890,18 +908,30 @@ const apiPatch  = (url, b)   => apiReq(url, { method: 'PATCH', headers: {'Conten
 // ═══════════════════════════════════════════════
 //  CALENDAR API
 // ═══════════════════════════════════════════════
+async function fetchCalList() {
+  try {
+    const d = await apiGet(`${CAL}/users/me/calendarList`);
+    calList = (d.items || []).filter(c => c.selected !== false && c.accessRole);
+    if (!calList.length) calList = [{ id: 'primary' }];
+  } catch(e) { calList = [{ id: 'primary' }]; }
+}
+
 async function fetchEvents() {
-  // broad window: visible month +/- buffer
+  if (!calList.length) calList = [{ id: 'primary' }];
   const base = viewMode === 'month'
     ? new Date(anchor.getFullYear(), anchor.getMonth(), 1)
     : weekStart(anchor);
   const tMin = new Date(base); tMin.setDate(tMin.getDate() - 14);
   const tMax = new Date(base); tMax.setDate(tMax.getDate() + 56);
   try {
-    const d = await apiGet(
-      `${CAL}/calendars/primary/events?timeMin=${tMin.toISOString()}&timeMax=${tMax.toISOString()}&singleEvents=true&orderBy=startTime&maxResults=500`
+    const results = await Promise.all(
+      calList.map(cal =>
+        apiGet(`${CAL}/calendars/${encodeURIComponent(cal.id)}/events?timeMin=${tMin.toISOString()}&timeMax=${tMax.toISOString()}&singleEvents=true&orderBy=startTime&maxResults=500`)
+          .then(d => (d.items || []).map(ev => ({ ...ev, _calId: cal.id, _calColor: cal.backgroundColor || null })))
+          .catch(() => [])
+      )
     );
-    calEvents = d.items || [];
+    calEvents = results.flat();
   } catch(e) {
     showToast('行程載入失敗：' + e.message);
     calEvents = [];
@@ -923,8 +953,10 @@ async function createEvent(title, start, end) {
 }
 
 async function deleteEvent(id) {
+  const ev = calEvents.find(e => e.id === id);
+  const calId = ev?._calId || 'primary';
   try {
-    await apiDel(`${CAL}/calendars/primary/events/${id}`);
+    await apiDel(`${CAL}/calendars/${encodeURIComponent(calId)}/events/${id}`);
     calEvents = calEvents.filter(e => e.id !== id);
     renderView();
     showToast('行程已刪除');
@@ -1316,18 +1348,21 @@ function renderTasks() {
     el.innerHTML = '<li class="tasks-empty">無待辦事項<br>（新增後可拖曳到行事曆）</li>';
     return;
   }
-  const pending   = taskList.filter(t => t.status !== 'completed');
-  const completed = taskList.filter(t => t.status === 'completed');
 
-  const cardHtml = (t) => {
+  // Build hierarchy: find root tasks and their children
+  const byId       = Object.fromEntries(taskList.map(t => [t.id, t]));
+  const roots      = taskList.filter(t => !t.parent || !byId[t.parent]);
+  const getKids    = id => taskList.filter(t => t.parent === id);
+
+  const cardHtml = (t, isChild = false) => {
     const cat  = taskCategory(t.title);
     const done = t.status === 'completed';
-    return `<li class="task-card${done ? ' done' : ''}"
+    return `<li class="task-card${done ? ' done' : ''}${isChild ? ' task-child' : ''}"
       style="background:${cat.bg};border-left-color:${cat.color}"
       draggable="${done ? 'false' : 'true'}"
       ondragstart="taskDragStart(event,'${t.id}')"
       ondragend="taskDragEnd(event)">
-      <span class="task-card-title" title="${esc(t.title||'')}">${esc(t.title||'(無標題)')}</span>
+      <span class="task-card-title" title="${esc(t.title||'')}">${isChild ? '↳ ' : ''}${esc(t.title||'(無標題)')}</span>
       <div class="task-card-actions">
         <button class="task-card-btn" style="color:${cat.color}"
           onclick="${done ? `uncompleteTask('${t.id}')` : `completeTask('${t.id}')`}"
@@ -1337,12 +1372,30 @@ function renderTasks() {
     </li>`;
   };
 
-  let html = pending.map(cardHtml).join('');
+  const renderTree = (tasks, isChild = false) => {
+    let h = '';
+    for (const t of tasks) {
+      h += cardHtml(t, isChild);
+      const kids = getKids(t.id);
+      if (kids.length) h += renderTree(kids, true);
+    }
+    return h;
+  };
+
+  const pending   = roots.filter(t => t.status !== 'completed');
+  const completed = roots.filter(t => t.status === 'completed');
+
+  let html = renderTree(pending);
   if (completed.length) {
-    html += `<li class="task-completed-sep">已完成 (${completed.length})</li>`;
-    html += completed.map(cardHtml).join('');
+    html += `<li><button class="task-completed-toggle" onclick="toggleCompleted()">${completedVisible ? '▾' : '▸'} 已完成 (${completed.length})</button></li>`;
+    if (completedVisible) html += renderTree(completed);
   }
   el.innerHTML = html;
+}
+
+function toggleCompleted() {
+  completedVisible = !completedVisible;
+  renderTasks();
 }
 
 // ═══════════════════════════════════════════════
@@ -1389,7 +1442,7 @@ function onDrop(ev, dateStr) {
 
   const body = document.getElementById('week-body');
   const rect = ev.currentTarget.getBoundingClientRect();
-  const relY = ev.clientY - rect.top + body.scrollTop;
+  const relY = ev.clientY - rect.top;
 
   if (dragItem) {
     // ── Drop task → new event ──
@@ -1468,7 +1521,7 @@ async function onEvMoveEnd(ev) {
   const dateStr = target.dataset.date;
   const body    = document.getElementById('week-body');
   const rect    = target.getBoundingClientRect();
-  const relY    = ev.clientY - rect.top + body.scrollTop;
+  const relY    = ev.clientY - rect.top;
   const offsetMins = Math.round((offsetY / HH) * 60);
   const startMins  = clamp(Math.round((relY / HH) * 60 / 15) * 15 - offsetMins, 0, 23*60);
   const [dy, dm, dd] = dateStr.split('-').map(Number);
@@ -1548,13 +1601,15 @@ async function onResizeEnd() {
 }
 
 async function moveEvent(id, newStart, newEnd) {
+  const target = calEvents.find(e => e.id === id);
+  const calId  = target?._calId || 'primary';
   try {
-    const ev = await apiPatch(`${CAL}/calendars/primary/events/${id}`, {
+    const updated = await apiPatch(`${CAL}/calendars/${encodeURIComponent(calId)}/events/${id}`, {
       start: { dateTime: newStart.toISOString() },
       end:   { dateTime: newEnd.toISOString() }
     });
     const idx = calEvents.findIndex(e => e.id === id);
-    if (idx >= 0) calEvents[idx] = { ...calEvents[idx], start: ev.start, end: ev.end };
+    if (idx >= 0) calEvents[idx] = { ...calEvents[idx], start: updated.start, end: updated.end };
     renderView();
     showToast('行程已更新');
   } catch(e) {
@@ -1570,7 +1625,7 @@ function onColClick(ev, dateStr) {
   if (ev.target.closest('.cal-ev')) return;
   const body = document.getElementById('week-body');
   const rect = ev.currentTarget.getBoundingClientRect();
-  const relY = ev.clientY - rect.top + body.scrollTop;
+  const relY = ev.clientY - rect.top;
   const hour = Math.floor(relY / HH);
   const minR = Math.round(((relY % HH) / HH) * 60 / 15) * 15;
   const [dy, dm, dd] = dateStr.split('-').map(Number);
@@ -1669,10 +1724,14 @@ function taskCategory(title) {
 }
 
 function evColor(ev) {
+  // 1. Calendar-level color (from which calendar the event belongs to)
+  if (ev._calColor) return ev._calColor;
+  // 2. Individual event color override
   if (ev.colorId) {
     const MAP = {'1':'#a4bdfc','2':'#7ae7bf','3':'#dbadff','4':'#ff887c','5':'#fbd75b','6':'#ffb878','7':'#46d6db','8':'#e1e1e1','9':'#5484ed','10':'#51b749','11':'#dc2127'};
     if (MAP[ev.colorId]) return MAP[ev.colorId];
   }
+  // 3. Keyword-based semantic color from title
   return taskCategory(ev.summary).color;
 }
 
