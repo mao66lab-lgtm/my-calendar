@@ -239,7 +239,7 @@ body {
   padding: 2px 3px;
   line-height: 1;
   border-radius: 3px;
-  opacity: 0.45;
+  opacity: 0.75;
   transition: opacity 0.15s;
 }
 .task-card:hover .task-card-btn { opacity: 0.8; }
@@ -524,30 +524,40 @@ body.ev-moving * { cursor: grabbing !important; user-select: none !important; }
 /* ===== MONTH VIEW ===== */
 #month-view {
   flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
+  background: var(--bg);
 }
-.month-dow-header {
+.month-section { margin-bottom: 0; }
+.month-section-title {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 10;
+  padding: 10px 16px 4px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+.month-section-dow {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
+  background: var(--bg);
 }
 .month-dow-cell {
-  padding: 8px 4px;
+  padding: 6px 4px;
   text-align: center;
   font-size: 11px;
   text-transform: uppercase;
   color: var(--text-secondary);
   font-weight: 600;
 }
-.month-body {
-  flex: 1;
-  overflow-y: auto;
+.month-section-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
 }
+.month-body { display: flex; flex-direction: column; }
 .month-cell {
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
@@ -658,6 +668,29 @@ body.ev-moving * { cursor: grabbing !important; user-select: none !important; }
   transition: background 0.15s;
 }
 .btn-save:hover { background: var(--primary-dark); }
+.btn-danger {
+  background: none;
+  border: 1px solid var(--red);
+  border-radius: 8px;
+  padding: 8px 20px;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--red);
+  transition: background 0.15s;
+}
+.btn-danger:hover { background: rgba(213,0,0,0.07); }
+.form-group select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 14px;
+  color: var(--text);
+  background: white;
+  transition: border-color 0.15s;
+  cursor: pointer;
+}
+.form-group select:focus { outline: none; border-color: var(--primary); }
 
 /* ===== TOAST ===== */
 .toast {
@@ -782,7 +815,6 @@ body.ev-moving * { cursor: grabbing !important; user-select: none !important; }
 
     <!-- Month View -->
     <div id="month-view" style="display:none">
-      <div class="month-dow-header" id="month-dow"></div>
       <div class="month-body" id="month-body"></div>
     </div>
 
@@ -792,7 +824,8 @@ body.ev-moving * { cursor: grabbing !important; user-select: none !important; }
 <!-- Event Modal -->
 <div class="modal-overlay" id="ev-modal" style="display:none" onclick="if(event.target===this)closeModal()">
   <div class="modal">
-    <h2>新增行程</h2>
+    <h2 id="ev-modal-title">新增行程</h2>
+    <input type="hidden" id="ev-id">
     <div class="form-group">
       <label>標題</label>
       <input type="text" id="ev-title" placeholder="行程標題" onkeydown="if(event.key==='Enter')saveEvent()" oninput="onTitleInput()">
@@ -807,7 +840,12 @@ body.ev-moving * { cursor: grabbing !important; user-select: none !important; }
         <input type="datetime-local" id="ev-end">
       </div>
     </div>
+    <div class="form-group" id="ev-cal-group">
+      <label>日曆</label>
+      <select id="ev-cal"></select>
+    </div>
     <div class="modal-actions">
+      <button class="btn-danger" id="ev-delete-btn" style="display:none;margin-right:auto" onclick="deleteFromModal()">刪除</button>
       <button class="btn-cancel" onclick="closeModal()">取消</button>
       <button class="btn-save" onclick="saveEvent()">儲存</button>
     </div>
@@ -938,14 +976,26 @@ async function fetchEvents() {
   }
 }
 
-async function createEvent(title, start, end) {
+function detectImportCal(title) {
+  const t = title || '';
+  if (/常會|會議|開會|meeting|討論|sync/i.test(t)) {
+    const c = calList.find(c => c.summary?.includes('貳貳的會議'));
+    return c?.id || 'primary';
+  }
+  const c = calList.find(c => c.summary?.includes('貳貳的直播'));
+  return c?.id || 'primary';
+}
+
+async function createEvent(title, start, end, calId = null) {
+  const targetCal = calId || 'primary';
   try {
-    const ev = await apiPost(`${CAL}/calendars/primary/events`, {
+    const ev = await apiPost(`${CAL}/calendars/${encodeURIComponent(targetCal)}/events`, {
       summary: title,
       start: { dateTime: start.toISOString() },
       end:   { dateTime: end.toISOString() }
     });
-    calEvents.push(ev);
+    const calInfo = calList.find(c => c.id === targetCal);
+    calEvents.push({ ...ev, _calId: targetCal, _calColor: calInfo?.backgroundColor || null });
     renderView();
     showToast('行程已新增');
     return ev;
@@ -1043,7 +1093,7 @@ async function quickImport() {
 
   if (!parsed.length) return;
   showToast(`匯入中 (${parsed.length} 筆)...`);
-  for (const p of parsed) await createEvent(p.title, p.start, p.end);
+  for (const p of parsed) await createEvent(p.title, p.start, p.end, detectImportCal(p.title));
   document.getElementById('qi-text').value = '';
   showToast(`✓ 已匯入 ${parsed.length} 筆行程`);
 }
@@ -1058,15 +1108,25 @@ function goToday() {
 }
 
 function navPrev() {
-  if (viewMode === 'week') anchor = addDays(anchor, -7);
-  else { anchor = new Date(anchor.getFullYear(), anchor.getMonth() - 1, 1); miniAnchor = new Date(anchor); renderMiniCal(); }
-  fetchEvents().then(() => renderView());
+  if (viewMode === 'week') { anchor = addDays(anchor, -7); fetchEvents().then(() => renderView()); }
+  else {
+    anchor = new Date(anchor.getFullYear(), anchor.getMonth() - 1, 1);
+    miniAnchor = new Date(anchor); renderMiniCal();
+    const sec = document.getElementById(`month-sec-${anchor.getFullYear()}-${anchor.getMonth()}`);
+    if (sec) { updateTitle(); sec.scrollIntoView({ block: 'start' }); }
+    else fetchEvents().then(() => renderView());
+  }
 }
 
 function navNext() {
-  if (viewMode === 'week') anchor = addDays(anchor, 7);
-  else { anchor = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 1); miniAnchor = new Date(anchor); renderMiniCal(); }
-  fetchEvents().then(() => renderView());
+  if (viewMode === 'week') { anchor = addDays(anchor, 7); fetchEvents().then(() => renderView()); }
+  else {
+    anchor = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 1);
+    miniAnchor = new Date(anchor); renderMiniCal();
+    const sec = document.getElementById(`month-sec-${anchor.getFullYear()}-${anchor.getMonth()}`);
+    if (sec) { updateTitle(); sec.scrollIntoView({ block: 'start' }); }
+    else fetchEvents().then(() => renderView());
+  }
 }
 
 function setView(v) {
@@ -1089,9 +1149,10 @@ function renderMiniCal() {
   const ws = weekStart(anchor);
   const we = addDays(ws, 6);
 
-  const first = new Date(y, m, 1).getDay();
+  const rawFirst = new Date(y, m, 1).getDay(); // 0=Sun
+  const first = rawFirst === 0 ? 6 : rawFirst - 1; // shift to Mon=0
   const days  = new Date(y, m+1, 0).getDate();
-  const DOW = ['日','一','二','三','四','五','六'];
+  const DOW = ['一','二','三','四','五','六','日'];
 
   let h = DOW.map(d => `<div class="dn">${d}</div>`).join('');
 
@@ -1162,7 +1223,7 @@ function renderView() {
 function renderWeek() {
   const ws = weekStart(anchor);
   const today = new Date(); today.setHours(0,0,0,0);
-  const DOW = ['日','一','二','三','四','五','六'];
+  const DOW = ['一','二','三','四','五','六','日'];
 
   // Header
   let hh = '<div class="week-header-spacer"></div>';
@@ -1170,7 +1231,7 @@ function renderWeek() {
     const d = addDays(ws, i);
     const isT = d.getTime() === today.getTime();
     hh += `<div class="week-header-day${isT?' is-today':''}">
-      <span class="wh-label">${DOW[d.getDay()]}</span>
+      <span class="wh-label">${DOW[i]}</span>
       <span class="wh-num">${d.getDate()}</span>
     </div>`;
   }
@@ -1290,19 +1351,17 @@ function updateTimeLine() {
 }
 
 // ═══════════════════════════════════════════════
-//  MONTH VIEW
+//  MONTH VIEW (infinite scroll, Mon-start)
 // ═══════════════════════════════════════════════
-function renderMonth() {
-  const y = anchor.getFullYear(), m = anchor.getMonth();
-  const today = new Date(); today.setHours(0,0,0,0);
-  const DOW = ['日','一','二','三','四','五','六'];
+const DOW_MONTH = ['一','二','三','四','五','六','日'];
 
-  document.getElementById('month-dow').innerHTML =
-    DOW.map(d => `<div class="month-dow-cell">${d}</div>`).join('');
-
-  const first = new Date(y, m, 1).getDay();
+function renderMonthSection(y, m, today) {
+  const rawFirst = new Date(y, m, 1).getDay();
+  const first = rawFirst === 0 ? 6 : rawFirst - 1;
   const days  = new Date(y, m+1, 0).getDate();
-  let html = '';
+  const sectionId = `month-sec-${y}-${m}`;
+
+  const dowHtml = DOW_MONTH.map(d => `<div class="month-dow-cell">${d}</div>`).join('');
 
   const cell = (d, other) => {
     const ds = fmtDate(d);
@@ -1321,12 +1380,33 @@ function renderMonth() {
       <div class="month-day-num">${d.getDate()}</div>${evHtml}</div>`;
   };
 
-  for (let i = 0; i < first; i++) html += cell(new Date(y, m, -first+i+1), true);
-  for (let d = 1; d <= days; d++)  html += cell(new Date(y, m, d), false);
+  let gridHtml = '';
+  for (let i = 0; i < first; i++) gridHtml += cell(new Date(y, m, -first+i+1), true);
+  for (let d = 1; d <= days; d++)  gridHtml += cell(new Date(y, m, d), false);
   const trail = (first + days) % 7;
-  if (trail) for (let d = 1; d <= 7-trail; d++) html += cell(new Date(y, m+1, d), true);
+  if (trail) for (let d = 1; d <= 7-trail; d++) gridHtml += cell(new Date(y, m+1, d), true);
 
+  return `<div class="month-section" id="${sectionId}">
+    <div class="month-section-title">${y}年 ${m+1}月</div>
+    <div class="month-section-dow">${dowHtml}</div>
+    <div class="month-section-grid">${gridHtml}</div>
+  </div>`;
+}
+
+function renderMonth() {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const ay = anchor.getFullYear(), am = anchor.getMonth();
+  let html = '';
+  for (let delta = -2; delta <= 9; delta++) {
+    let m = am + delta, y = ay;
+    while (m < 0)  { m += 12; y--; }
+    while (m > 11) { m -= 12; y++; }
+    html += renderMonthSection(y, m, today);
+  }
   document.getElementById('month-body').innerHTML = html;
+  // Scroll to anchor month
+  const sec = document.getElementById(`month-sec-${ay}-${am}`);
+  if (sec) sec.scrollIntoView({ block: 'start' });
 }
 
 function onMonthCellClick(ds) {
@@ -1336,7 +1416,7 @@ function onMonthCellClick(ds) {
 }
 
 function onMonthEvClick(id) {
-  if (confirm('刪除此行程？')) deleteEvent(id);
+  openEditModal(id);
 }
 
 // ═══════════════════════════════════════════════
@@ -1376,7 +1456,7 @@ function renderTasks() {
     let h = '';
     for (const t of tasks) {
       h += cardHtml(t, isChild);
-      const kids = getKids(t.id);
+      const kids = getKids(t.id).filter(k => completedVisible || k.status !== 'completed');
       if (kids.length) h += renderTree(kids, true);
     }
     return h;
@@ -1475,7 +1555,7 @@ function evMoveStart(ev, id) {
     width:${rect.width}px; height:${rect.height}px;
     left:${rect.left}px; top:${rect.top}px;
     opacity:0.88; box-shadow:0 6px 24px rgba(0,0,0,0.35);
-    transform:scale(1.03); transition:none;
+    transform:scale(1.03); transition:none; display:none;
   `;
   document.body.appendChild(ghostEl);
   el.style.opacity = '0.22';
@@ -1486,7 +1566,10 @@ function evMoveStart(ev, id) {
     id, el, ghostEl,
     offsetX: ev.clientX - rect.left,
     offsetY: ev.clientY - rect.top,
-    duration: origEnd - origStart
+    duration: origEnd - origStart,
+    startClientX: ev.clientX,
+    startClientY: ev.clientY,
+    moved: false
   };
   document.addEventListener('mousemove', onEvMoveMove);
   document.addEventListener('mouseup',   onEvMoveEnd);
@@ -1495,7 +1578,13 @@ function evMoveStart(ev, id) {
 
 function onEvMoveMove(ev) {
   if (!moveState) return;
-  const { ghostEl, offsetX, offsetY } = moveState;
+  const { ghostEl, offsetX, offsetY, startClientX, startClientY } = moveState;
+  const dx = ev.clientX - startClientX, dy = ev.clientY - startClientY;
+  if (!moveState.moved && Math.sqrt(dx*dx + dy*dy) > 8) {
+    moveState.moved = true;
+    ghostEl.style.display = '';
+  }
+  if (!moveState.moved) return;
   ghostEl.style.left = (ev.clientX - offsetX) + 'px';
   ghostEl.style.top  = (ev.clientY - offsetY) + 'px';
   document.querySelectorAll('.day-col.drag-over').forEach(e => e.classList.remove('drag-over'));
@@ -1509,21 +1598,25 @@ async function onEvMoveEnd(ev) {
   document.removeEventListener('mouseup',   onEvMoveEnd);
   document.body.classList.remove('ev-moving');
 
-  const { id, el, ghostEl, offsetY, duration } = moveState;
+  const { id, el, ghostEl, offsetY, duration, moved } = moveState;
   moveState = null;
   ghostEl.remove();
   el.style.opacity = '';
   document.querySelectorAll('.day-col.drag-over').forEach(e => e.classList.remove('drag-over'));
 
+  if (!moved) {
+    openEditModal(id);
+    return;
+  }
+
   const target = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.day-col');
   if (!target) return;
 
   const dateStr = target.dataset.date;
-  const body    = document.getElementById('week-body');
   const rect    = target.getBoundingClientRect();
   const relY    = ev.clientY - rect.top;
   const offsetMins = Math.round((offsetY / HH) * 60);
-  const startMins  = clamp(Math.round((relY / HH) * 60 / 15) * 15 - offsetMins, 0, 23*60);
+  const startMins  = clamp(Math.round((relY / HH) * 60 / 30) * 30 - offsetMins, 0, 23*60);
   const [dy, dm, dd] = dateStr.split('-').map(Number);
   const newStart = new Date(dy, dm-1, dd, Math.floor(startMins/60), startMins%60, 0, 0);
   const newEnd   = new Date(newStart.getTime() + duration);
@@ -1637,12 +1730,47 @@ function onColClick(ev, dateStr) {
 // ═══════════════════════════════════════════════
 //  EVENT MODAL
 // ═══════════════════════════════════════════════
+const ALLOWED_CALS = ['貳貳的工作', '貳貳的會議', '貳貳的直播', '茉央的工作'];
+
+function populateCalSelect(selectedCalId) {
+  const sel = document.getElementById('ev-cal');
+  const options = calList.filter(c => ALLOWED_CALS.some(n => c.summary?.includes(n) || c.id === n));
+  sel.innerHTML = options.map(c =>
+    `<option value="${esc(c.id)}"${c.id === selectedCalId ? ' selected' : ''}>${esc(c.summary || c.id)}</option>`
+  ).join('');
+}
+
 function openModal(start, end, title = '') {
+  document.getElementById('ev-id').value     = '';
+  document.getElementById('ev-modal-title').textContent = '新增行程';
   document.getElementById('ev-title').value  = title;
   document.getElementById('ev-start').value  = fmtLocal(start);
   document.getElementById('ev-end').value    = fmtLocal(end);
+  document.getElementById('ev-delete-btn').style.display = 'none';
+  populateCalSelect('');
   document.getElementById('ev-modal').style.display = 'flex';
   setTimeout(() => document.getElementById('ev-title').focus(), 50);
+}
+
+function openEditModal(id) {
+  const calEv = calEvents.find(e => e.id === id);
+  if (!calEv) return;
+  document.getElementById('ev-id').value     = id;
+  document.getElementById('ev-modal-title').textContent = '編輯行程';
+  document.getElementById('ev-title').value  = calEv.summary || '';
+  document.getElementById('ev-start').value  = fmtLocal(new Date(calEv.start.dateTime || calEv.start.date));
+  document.getElementById('ev-end').value    = fmtLocal(new Date(calEv.end?.dateTime || calEv.end?.date || calEv.start.dateTime));
+  document.getElementById('ev-delete-btn').style.display = '';
+  populateCalSelect(calEv._calId || '');
+  document.getElementById('ev-modal').style.display = 'flex';
+  setTimeout(() => document.getElementById('ev-title').focus(), 50);
+}
+
+async function deleteFromModal() {
+  const id = document.getElementById('ev-id').value;
+  if (!id) return;
+  closeModal();
+  await deleteEvent(id);
 }
 
 function onTitleInput() {
@@ -1659,15 +1787,50 @@ function closeModal() {
 }
 
 async function saveEvent() {
+  const id    = document.getElementById('ev-id').value;
   const title = document.getElementById('ev-title').value.trim();
   const s     = document.getElementById('ev-start').value;
   const e     = document.getElementById('ev-end').value;
+  const calId = document.getElementById('ev-cal').value;
   if (!title) { showToast('請輸入標題'); document.getElementById('ev-title').focus(); return; }
   if (!s || !e) { showToast('請填寫時間'); return; }
   const start = new Date(s), end = new Date(e);
   if (end <= start) { showToast('結束時間必須晚於開始時間'); return; }
   closeModal();
-  await createEvent(title, start, end);
+  if (id) {
+    // Edit existing event
+    const calEv = calEvents.find(ev => ev.id === id);
+    const origCalId = calEv?._calId || 'primary';
+    try {
+      const updated = await apiPatch(`${CAL}/calendars/${encodeURIComponent(origCalId)}/events/${id}`, {
+        summary: title,
+        start: { dateTime: start.toISOString() },
+        end:   { dateTime: end.toISOString() }
+      });
+      const idx = calEvents.findIndex(ev => ev.id === id);
+      if (idx >= 0) calEvents[idx] = { ...calEvents[idx], summary: updated.summary, start: updated.start, end: updated.end };
+      // Move to different calendar if changed
+      if (calId && calId !== origCalId) {
+        await moveEventToCalendar(id, origCalId, calId);
+      } else {
+        renderView();
+        showToast('行程已更新');
+      }
+    } catch(err) { showToast('更新失敗：' + err.message); }
+  } else {
+    await createEvent(title, start, end, calId || null);
+  }
+}
+
+async function moveEventToCalendar(id, fromCalId, toCalId) {
+  try {
+    const moved = await apiPost(`${CAL}/calendars/${encodeURIComponent(fromCalId)}/events/${id}/move?destination=${encodeURIComponent(toCalId)}`, {});
+    const idx = calEvents.findIndex(ev => ev.id === id);
+    const toCalInfo = calList.find(c => c.id === toCalId);
+    if (idx >= 0) calEvents[idx] = { ...calEvents[idx], _calId: toCalId, _calColor: toCalInfo?.backgroundColor || null };
+    renderView();
+    showToast('行程已更新');
+  } catch(err) { showToast('移動日曆失敗：' + err.message); renderView(); }
 }
 
 // ═══════════════════════════════════════════════
@@ -1675,7 +1838,8 @@ async function saveEvent() {
 // ═══════════════════════════════════════════════
 function weekStart(d) {
   const r = new Date(d);
-  r.setDate(r.getDate() - r.getDay());
+  const day = r.getDay(); // 0=Sun
+  r.setDate(r.getDate() - (day === 0 ? 6 : day - 1));
   r.setHours(0,0,0,0);
   return r;
 }
@@ -1717,10 +1881,10 @@ function eventsOnDay(date) {
 
 function taskCategory(title) {
   const t = title || '';
-  if (/直播|開播|live/i.test(t))              return { label:'直播', color:'#00acc1', bg:'rgba(0,172,193,0.13)' };
-  if (/會議|開會|meeting|討論|sync/i.test(t))  return { label:'會議', color:'#e91e63', bg:'rgba(233,30,99,0.13)' };
-  if (/深度|研究|調查|分析/i.test(t))           return { label:'深度', color:'#7c4dff', bg:'rgba(124,77,255,0.13)' };
-  return { label:'工作', color:'#4285f4', bg:'rgba(66,133,244,0.13)' };
+  if (/直播|開播|live/i.test(t))              return { label:'直播', color:'#007c8a', bg:'rgba(0,172,193,0.22)' };
+  if (/會議|開會|meeting|討論|sync/i.test(t))  return { label:'會議', color:'#b0003a', bg:'rgba(233,30,99,0.22)' };
+  if (/深度|研究|調查|分析/i.test(t))           return { label:'深度', color:'#5c2fa8', bg:'rgba(124,77,255,0.22)' };
+  return { label:'工作', color:'#1a56b0', bg:'rgba(66,133,244,0.22)' };
 }
 
 function evColor(ev) {
