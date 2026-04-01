@@ -588,7 +588,7 @@ body.ev-moving * { cursor: grabbing !important; user-select: none !important; }
   font-size: 10px;
   padding: 1px 5px;
   border-radius: 3px;
-  color: white;
+  color: #fff;
   background: #4285f4;
   overflow: hidden;
   white-space: nowrap;
@@ -1262,13 +1262,14 @@ function renderWeek() {
       const end   = new Date(ev.end?.dateTime   || ev.end?.date || start);
       const tl    = ev.start?.dateTime ? `${fmtTime(start)}–${fmtTime(end)}` : '全天';
       const color = evColor(ev);
+      const textCol = evTextColor(color);
       g += `<div class="cal-ev" id="ev-${ev.id}"
-        style="top:${top}px;height:${Math.max(height,20)}px;left:${left}%;width:${width}%;background:${color}"
+        style="top:${top}px;height:${Math.max(height,20)}px;left:${left}%;width:${width}%;background:${color};color:${textCol}"
         title="${esc(ev.summary||'')}"
         onmousedown="evMoveStart(event,'${ev.id}')"
         onclick="event.stopPropagation()">
         <div class="ev-rz ev-rz-top" onmousedown="evResizeStart(event,'${ev.id}','top')"></div>
-        <button class="ev-del" onclick="deleteEvent('${ev.id}');event.stopPropagation()">×</button>
+        <button class="ev-del" style="color:${textCol}" onclick="deleteEvent('${ev.id}');event.stopPropagation()">×</button>
         <span class="ev-time">${tl}</span>
         <span class="ev-title">${esc(ev.summary||'(無標題)')}</span>
         <div class="ev-rz ev-rz-bot" onmousedown="evResizeStart(event,'${ev.id}','bot')"></div>
@@ -1372,7 +1373,8 @@ function renderMonthSection(y, m, today) {
     const evs = eventsOnDay(d);
     let evHtml = evs.slice(0, 4).map(e => {
       const color = evColor(e);
-      return `<div class="month-ev-pill" style="background:${color}"
+      const textCol = evTextColor(color);
+      return `<div class="month-ev-pill" style="background:${color};color:${textCol}"
         onclick="onMonthEvClick('${e.id}');event.stopPropagation()">${esc(e.summary||'(無標題)')}</div>`;
     }).join('');
     if (evs.length > 4) evHtml += `<div class="month-more">+${evs.length-4} 筆</div>`;
@@ -1885,6 +1887,20 @@ function taskCategory(title) {
   if (/會議|開會|meeting|討論|sync/i.test(t))  return { label:'會議', color:'#b0003a', bg:'rgba(233,30,99,0.22)' };
   if (/深度|研究|調查|分析/i.test(t))           return { label:'深度', color:'#5c2fa8', bg:'rgba(124,77,255,0.22)' };
   return { label:'工作', color:'#1a56b0', bg:'rgba(66,133,244,0.22)' };
+}
+
+function isLightColor(hex) {
+  const c = hex.replace('#', '');
+  if (c.length !== 6 && c.length !== 3) return false;
+  const full = c.length === 3 ? c.split('').map(x => x+x).join('') : c;
+  const r = parseInt(full.slice(0,2),16);
+  const g = parseInt(full.slice(2,4),16);
+  const b = parseInt(full.slice(4,6),16);
+  return (0.299*r + 0.587*g + 0.114*b) > 155;
+}
+
+function evTextColor(bgColor) {
+  return isLightColor(bgColor) ? '#1a1a1a' : '#ffffff';
 }
 
 function evColor(ev) {
