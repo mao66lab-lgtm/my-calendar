@@ -895,18 +895,40 @@ function initGIS() {
     client_id: CLIENT_ID,
     scope: SCOPES,
     callback(r) {
-      if (r.error) { showToast('登入失敗：' + r.error); return; }
+      if (r.error) {
+        // If silent re-auth failed, just stay on login screen
+        if (r.error !== 'interaction_required' && r.error !== 'access_denied') {
+          showToast('登入失敗：' + r.error);
+        }
+        return;
+      }
       accessToken = r.access_token;
       const exp = Date.now() + (r.expires_in - 60) * 1000;
-      sessionStorage.setItem('gca_token', accessToken);
-      sessionStorage.setItem('gca_exp', exp);
+      localStorage.setItem('gca_token', accessToken);
+      localStorage.setItem('gca_exp', exp);
+      // Set up auto-refresh before token expires
+      const refreshIn = (r.expires_in - 120) * 1000;
+      if (refreshIn > 0) setTimeout(silentRefresh, refreshIn);
       onLogin();
     }
   });
-  // restore session
-  const t = sessionStorage.getItem('gca_token');
-  const e = sessionStorage.getItem('gca_exp');
-  if (t && e && Date.now() < +e) { accessToken = t; onLogin(); }
+  // Restore from storage
+  const t = localStorage.getItem('gca_token');
+  const e = localStorage.getItem('gca_exp');
+  if (t && e && Date.now() < +e) {
+    accessToken = t;
+    // Schedule refresh based on remaining time
+    const remaining = +e - Date.now() - 60000;
+    if (remaining > 0) setTimeout(silentRefresh, remaining);
+    onLogin();
+  } else {
+    // Token expired or missing — try silent re-auth
+    setTimeout(() => tokenClient?.requestAccessToken({ prompt: '' }), 500);
+  }
+}
+
+function silentRefresh() {
+  if (tokenClient) tokenClient.requestAccessToken({ prompt: '' });
 }
 
 function login() {
@@ -979,11 +1001,15 @@ async function fetchEvents() {
 function detectImportCal(title) {
   const t = title || '';
   if (/常會|會議|開會|meeting|討論|sync/i.test(t)) {
-    const c = calList.find(c => c.summary?.includes('貳貳的會議'));
-    return c?.id || 'primary';
+    return calList.find(c => c.summary?.includes('貳貳的會議'))?.id || 'primary';
   }
-  const c = calList.find(c => c.summary?.includes('貳貳的直播'));
-  return c?.id || 'primary';
+  if (/出門|外出|外食|散步/i.test(t)) {
+    return calList.find(c => c.summary?.includes('茉央的工作'))?.id || 'primary';
+  }
+  if (/線上活動|online|活動|節目|追劇|看片/i.test(t)) {
+    return calList.find(c => c.summary?.includes('貳貳的工作'))?.id || 'primary';
+  }
+  return calList.find(c => c.summary?.includes('貳貳的直播'))?.id || 'primary';
 }
 
 async function createEvent(title, start, end, calId = null) {
@@ -1883,9 +1909,11 @@ function eventsOnDay(date) {
 
 function taskCategory(title) {
   const t = title || '';
-  if (/直播|開播|live/i.test(t))              return { label:'直播', color:'#007c8a', bg:'rgba(0,172,193,0.22)' };
-  if (/會議|開會|meeting|討論|sync/i.test(t))  return { label:'會議', color:'#b0003a', bg:'rgba(233,30,99,0.22)' };
-  if (/深度|研究|調查|分析/i.test(t))           return { label:'深度', color:'#5c2fa8', bg:'rgba(124,77,255,0.22)' };
+  if (/直播|開播|live/i.test(t))                 return { label:'直播',      color:'#007c8a', bg:'rgba(0,172,193,0.22)' };
+  if (/會議|開會|meeting|討論|sync|常會/i.test(t)) return { label:'會議',      color:'#b0003a', bg:'rgba(233,30,99,0.22)' };
+  if (/深度|研究|調查|分析/i.test(t))              return { label:'深度',      color:'#5c2fa8', bg:'rgba(124,77,255,0.22)' };
+  if (/出門|外出|外食|散步/i.test(t))              return { label:'出門',      color:'#bf5000', bg:'rgba(230,115,0,0.22)' };
+  if (/線上活動|online|活動|節目|追劇|看片/i.test(t)) return { label:'線上活動', color:'#2e6b2e', bg:'rgba(67,160,71,0.22)' };
   return { label:'工作', color:'#1a56b0', bg:'rgba(66,133,244,0.22)' };
 }
 
