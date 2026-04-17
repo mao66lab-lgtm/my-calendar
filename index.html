@@ -1758,19 +1758,18 @@ function onColClick(ev, dateStr) {
 // ═══════════════════════════════════════════════
 //  EVENT MODAL
 // ═══════════════════════════════════════════════
-const PREFERRED_CALS = ['貳貳的工作', '貳貳的會議', '貳貳的直播', '茉央的工作'];
+const PREFERRED_CALS = ['貳貳的工作', '貳貳的會議', '貳貳的直播', '茉央的工作', '出門', '其他線上活動'];
 
 function populateCalSelect(selectedCalId) {
   const sel = document.getElementById('ev-cal');
-  // Sort: preferred cals first (by order), then rest alphabetically
-  const preferred = [], rest = [];
+  // Only show preferred calendars, in specified order
+  const slots = new Array(PREFERRED_CALS.length).fill(null);
   calList.forEach(c => {
-    const rank = PREFERRED_CALS.findIndex(n => (c.summary || '').includes(n));
-    if (rank >= 0) preferred[rank] = c;
-    else rest.push(c);
+    const rank = PREFERRED_CALS.findIndex(n => (c.summary || '') === n);
+    if (rank >= 0) slots[rank] = c;
   });
-  const sorted = [...preferred.filter(Boolean), ...rest];
-  sel.innerHTML = sorted.map(c =>
+  const options = slots.filter(Boolean);
+  sel.innerHTML = options.map(c =>
     `<option value="${esc(c.id)}"${c.id === selectedCalId ? ' selected' : ''}>${esc(c.summary || c.id)}</option>`
   ).join('');
 }
