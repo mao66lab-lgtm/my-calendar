@@ -1758,12 +1758,19 @@ function onColClick(ev, dateStr) {
 // ═══════════════════════════════════════════════
 //  EVENT MODAL
 // ═══════════════════════════════════════════════
-const ALLOWED_CALS = ['貳貳的工作', '貳貳的會議', '貳貳的直播', '茉央的工作'];
+const PREFERRED_CALS = ['貳貳的工作', '貳貳的會議', '貳貳的直播', '茉央的工作'];
 
 function populateCalSelect(selectedCalId) {
   const sel = document.getElementById('ev-cal');
-  const options = calList.filter(c => ALLOWED_CALS.some(n => c.summary?.includes(n) || c.id === n));
-  sel.innerHTML = options.map(c =>
+  // Sort: preferred cals first (by order), then rest alphabetically
+  const preferred = [], rest = [];
+  calList.forEach(c => {
+    const rank = PREFERRED_CALS.findIndex(n => (c.summary || '').includes(n));
+    if (rank >= 0) preferred[rank] = c;
+    else rest.push(c);
+  });
+  const sorted = [...preferred.filter(Boolean), ...rest];
+  sel.innerHTML = sorted.map(c =>
     `<option value="${esc(c.id)}"${c.id === selectedCalId ? ' selected' : ''}>${esc(c.summary || c.id)}</option>`
   ).join('');
 }
