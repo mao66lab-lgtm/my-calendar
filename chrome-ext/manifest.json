@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "快速加入行程",
+  "version": "1.0",
+  "description": "選取文字右鍵快速加入 Google 日曆",
+  "permissions": ["contextMenus", "storage", "notifications", "identity"],
+  "host_permissions": ["https://www.googleapis.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "快速加入行程"
+  }
+}

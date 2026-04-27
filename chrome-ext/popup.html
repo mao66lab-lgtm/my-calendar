@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<style>
+  body {
+    width: 220px;
+    padding: 16px;
+    font-family: 'Google Sans', Roboto, Arial, sans-serif;
+    color: #202124;
+    margin: 0;
+  }
+  h2 { font-size: 14px; font-weight: 500; margin: 0 0 12px; }
+  .status {
+    font-size: 12px;
+    color: #5f6368;
+    margin-bottom: 14px;
+    min-height: 16px;
+  }
+  .status.ok { color: #0f9d58; }
+  button {
+    width: 100%;
+    padding: 8px;
+    background: #1a73e8;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  button:hover { background: #1557b0; }
+  .hint {
+    font-size: 11px;
+    color: #aaa;
+    margin-top: 12px;
+    line-height: 1.6;
+    border-top: 1px solid #eee;
+    padding-top: 10px;
+  }
+  .setup-note {
+    font-size: 11px;
+    color: #e67c00;
+    margin-top: 10px;
+    line-height: 1.5;
+    display: none;
+  }
+</style>
+</head>
+<body>
+<h2>📅 快速加入行程</h2>
+<div class="status" id="status">確認登入狀態...</div>
+<button id="btn">登入 Google</button>
+<div class="setup-note" id="setup-note"></div>
+<div class="hint">
+  選取文字後右鍵 → 「加入行程」<br>
+  格式：<code>MMDD HHMM 標題</code><br>
+  例：<code>0420 2200 直播</code>
+</div>
+<script src="popup.js"></script>
+</body>
+</html>
